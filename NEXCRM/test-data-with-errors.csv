@@ -1,0 +1,8 @@
+first_name,last_name,email,phone,company,city,source,consent
+Valid,User,valid.user@example.com,+1-555-0301,Valid Corp,New York,Website,yes
+Missing,Email,,+1-555-0302,No Email Inc,Boston,LinkedIn,true
+,NoFirstName,no.firstname@test.com,+1-555-0303,Test Co,Chicago,Referral,yes
+NoLastName,,no.lastname@demo.com,+1-555-0304,Demo LLC,Seattle,Website,true
+Another,Valid,another.valid@sample.com,+1-555-0305,Sample Inc,Austin,Cold Email,yes
+Duplicate,Email,valid.user@example.com,+1-555-0306,Duplicate Test,Miami,Webinar,yes
+Complete,Record,complete.record@example.com,+1-555-0307,Complete Corp,Denver,Partner,true

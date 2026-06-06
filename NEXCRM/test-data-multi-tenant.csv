@@ -1,0 +1,13 @@
+tenant_subdomain,first_name,last_name,email,phone,company,city,source,consent
+edu,Alice,Johnson,alice.johnson@example.com,+91-9876540201,ABC Academy,Mumbai,Website,yes
+edu,Bob,Williams,bob.williams@demo.com,+91-9876540202,Demo Institute,Delhi,LinkedIn,true
+edu,Carol,Brown,carol.brown@test.com,+91-9876540203,Test Coaching,Bangalore,Referral,yes
+realestate,David,Jones,david.jones@sample.com,+91-9876540204,Sample Properties,Pune,Cold Email,true
+realestate,Eve,Garcia,eve.garcia@placeholder.com,+91-9876540205,Placeholder Realty,Hyderabad,Conference,yes
+realestate,Frank,Miller,frank.miller@mockup.com,+91-9876540206,Mockup Builders,Chennai,Webinar,true
+construction,Grace,Davis,grace.davis@prototype.com,+91-9876540207,Prototype Constructions,Ahmedabad,Partner,yes
+construction,Henry,Rodriguez,henry.r@example.org,+91-9876540208,Example Contractors,Kolkata,Website,true
+itservices,Isabel,Martinez,isabel.m@testing.com,+91-9876540209,Testing Tech,Mumbai,Cold Call,yes
+itservices,Jack,Hernandez,jack.h@business.com,+91-9876540210,Business IT Solutions,Delhi,LinkedIn,true
+autoparts,Karen,Lopez,karen.lopez@commerce.com,+91-9876540211,Commerce Auto,Bangalore,Trade Show,yes
+iotaqi,Leo,Gonzalez,leo.gonzalez@industry.com,+91-9876540212,Industry IoT,Pune,Referral,true

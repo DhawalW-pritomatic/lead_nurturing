@@ -1,0 +1,16 @@
+first_name,last_name,email,phone,company,city,source,consent
+John,Doe,john.doe@example.com,+1-555-0101,Acme Corp,New York,Website,yes
+Jane,Smith,jane.smith@techcorp.com,+1-555-0102,TechCorp Inc,San Francisco,LinkedIn,true
+Michael,Johnson,michael.j@startup.io,+1-555-0103,StartupIO,Austin,Referral,yes
+Emily,Davis,emily.davis@enterprise.com,+1-555-0104,Enterprise Solutions,Boston,Cold Email,true
+David,Wilson,david.wilson@cloudtech.com,+1-555-0105,CloudTech,Seattle,Conference,yes
+Sarah,Martinez,sarah.m@innovate.co,+1-555-0106,Innovate Co,Chicago,Webinar,true
+Robert,Anderson,robert.anderson@finance.com,+1-555-0107,Finance Group,Miami,Partner,yes
+Lisa,Taylor,lisa.taylor@retail.com,+1-555-0108,Retail Solutions,Denver,Website,true
+James,Thomas,james.thomas@healthcare.org,+1-555-0109,Healthcare Org,Portland,Cold Call,yes
+Jennifer,White,jennifer.w@consulting.com,+1-555-0110,Consulting Firm,Atlanta,LinkedIn,true
+William,Harris,william.harris@manufacturing.com,+1-555-0111,Manufacturing Inc,Detroit,Trade Show,yes
+Mary,Clark,mary.clark@education.edu,+1-555-0112,Education Services,Philadelphia,Referral,true
+Christopher,Lewis,chris.lewis@logistics.com,+1-555-0113,Logistics Pro,Dallas,Website,yes
+Patricia,Robinson,patricia.r@media.com,+1-555-0114,Media Group,Los Angeles,Cold Email,true
+Daniel,Walker,daniel.walker@realestate.com,+1-555-0115,Real Estate Partners,Phoenix,Conference,yes
