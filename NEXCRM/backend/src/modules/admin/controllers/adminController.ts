@@ -1,6 +1,9 @@
 import { Response } from 'express';
 import { AuthRequest } from '../../../middleware/auth';
 import { AdminService } from '../services/adminService';
+import { GmailPollerService } from '../../tracking/services/gmailPollerService';
+
+const gmailPoller = new GmailPollerService();
 
 const adminService = new AdminService();
 
@@ -99,6 +102,15 @@ export class AdminController {
     try {
       const health = await adminService.getSystemHealth();
       res.json(health);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  }
+
+  async triggerGmailPoll(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      const result = await gmailPoller.poll();
+      res.json({ message: 'Poll complete', ...result });
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }

@@ -2,6 +2,7 @@ import { Lead, LeadQuery, OutreachRecord, EngagementEvent, User, Tenant } from '
 import { Op } from 'sequelize';
 import { ScoringService } from '../../scoring/services/scoringService';
 import { NotificationService } from '../../notifications/services/notificationService';
+import { emitToTenant } from '../../../utils/sseEmitter';
 import { config } from '../../../config';
 import { v4 as uuidv4 } from 'uuid';
 import nodemailer from 'nodemailer';
@@ -119,9 +120,17 @@ export class TrackingService {
     const record = await OutreachRecord.findOne({ where: { tracking_id: trackingId } });
     if (!record) return;
 
-    // Only count first open
+    // Only count first open; never downgrade a record that is already 'clicked'
     if (!record.opened_at) {
-      await OutreachRecord.update({ status: 'opened', opened_at: new Date() }, { where: { id: record.id } });
+      await OutreachRecord.update(
+        { opened_at: new Date() },
+        { where: { id: record.id } }
+      );
+      // Only advance status to 'opened' if not already at a further stage
+      await OutreachRecord.update(
+        { status: 'opened' },
+        { where: { id: record.id, status: { [Op.notIn]: ['clicked'] } } }
+      );
 
       // Log engagement event
       await EngagementEvent.create({
@@ -136,6 +145,9 @@ export class TrackingService {
       // Update score
       await scoringService.updateScore(record.tenant_id, record.lead_id, 'email_opened', 5);
 
+      // Push real-time event to all connected frontend clients for this tenant
+      emitToTenant(record.tenant_id, 'email_opened', { outreach_id: record.id, lead_id: record.lead_id });
+
       // Notification
       const lead = await Lead.findByPk(record.lead_id);
       if (lead) {
@@ -148,7 +160,10 @@ export class TrackingService {
     const record = await OutreachRecord.findOne({ where: { tracking_id: trackingId } });
     if (!record) return '/';
 
-    await OutreachRecord.update({ status: 'clicked', clicked_at: new Date() }, { where: { id: record.id } });
+    // Clicking implies the email was opened — set opened_at if not already set
+    const updateFields: Record<string, any> = { status: 'clicked', clicked_at: new Date() };
+    if (!record.opened_at) updateFields.opened_at = new Date();
+    await OutreachRecord.update(updateFields, { where: { id: record.id } });
 
     await EngagementEvent.create({
       tenant_id: record.tenant_id,
@@ -347,8 +362,14 @@ export class TrackingService {
             <img src="${config.baseUrl}/track/open/${trackingId}" width="1" height="1" alt="" />
           `;
         
+        // Use the authenticated SMTP user as the sender address so the mail
+        // server (e.g. Gmail) accepts it. Keep the display name from config.
+        const fromName = (config.smtp.from.match(/^([^<]+)/) || [''])[0].trim().replace(/^["']|["']$/g, '');
+        const fromAddress = config.smtp.user || config.smtp.from;
+        const from = fromName && config.smtp.user ? `${fromName} <${config.smtp.user}>` : fromAddress;
+
         await this.transporter.sendMail({
-          from: config.smtp.from,
+          from,
           to: lead.email,
           subject: replySubject,
           html: emailHtml,

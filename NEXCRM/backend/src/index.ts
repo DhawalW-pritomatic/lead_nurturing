@@ -49,6 +49,9 @@ const app = express();
 app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
 app.use(cors({ origin: config.frontendUrl, credentials: true }));
 
+// Skip ngrok browser warning interstitial for all responses (dev tunnel)
+app.use((_req, res, next) => { res.setHeader('ngrok-skip-browser-warning', 'true'); next(); });
+
 // Global rate limiting (IP-based)
 app.use('/api/', globalRateLimiter);
 

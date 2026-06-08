@@ -1,6 +1,9 @@
-import { Response } from 'express';
+import { Request, Response } from 'express';
+import jwt from 'jsonwebtoken';
 import { AuthRequest } from '../../../middleware/auth';
 import { OutreachService } from '../services/outreachService';
+import { addSseClient, removeSseClient } from '../../../utils/sseEmitter';
+import { config } from '../../../config';
 
 const outreachService = new OutreachService();
 
@@ -31,5 +34,32 @@ export class OutreachController {
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }
+  }
+
+  // SSE stream — EventSource can't send Authorization headers, so token comes as query param
+  streamEvents(req: Request, res: Response): void {
+    const token = req.query.token as string;
+    if (!token) { res.status(401).end(); return; }
+
+    let tenantId: string;
+    try {
+      const decoded = jwt.verify(token, config.jwt.secret) as any;
+      tenantId = decoded.tenant_id;
+    } catch {
+      res.status(401).end();
+      return;
+    }
+
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no'); // disable nginx buffering if behind proxy
+    res.flushHeaders();
+
+    res.write('event: connected\ndata: {}\n\n');
+    (res as any).flush?.();
+
+    addSseClient(tenantId, res);
+    req.on('close', () => removeSseClient(tenantId, res));
   }
 }
