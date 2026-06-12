@@ -36,12 +36,14 @@ router.get('/projects', controller.getProjects.bind(controller));
 router.post('/projects', authorize('tenant_admin', 'super_admin'), controller.createProject.bind(controller));
 router.put('/projects/:id', authorize('tenant_admin', 'super_admin'), controller.updateProject.bind(controller));
 router.delete('/projects/:id', authorize('tenant_admin', 'super_admin'), controller.deleteProject.bind(controller));
+router.post('/projects/:id/assign', authorize('super_admin'), controller.assignProject.bind(controller));
 
 // Folders
 router.get('/folders', controller.getFolders.bind(controller));
 router.post('/folders', authorize('tenant_admin', 'sales_manager', 'super_admin'), controller.createFolder.bind(controller));
 router.put('/folders/:id', authorize('tenant_admin', 'sales_manager', 'super_admin'), controller.updateFolder.bind(controller));
 router.delete('/folders/:id', authorize('tenant_admin', 'super_admin'), controller.deleteFolder.bind(controller));
+router.get('/folders/:id/export', controller.exportFolder.bind(controller));
 
 // Files
 router.get('/', controller.getAssets.bind(controller));

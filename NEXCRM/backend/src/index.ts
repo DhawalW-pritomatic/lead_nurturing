@@ -121,6 +121,9 @@ const start = async () => {
       console.log('Database synced.');
     }
 
+    // Safe additive column migrations (idempotent — no-op if column already exists)
+    await sequelize.query('ALTER TABLE templates ADD COLUMN IF NOT EXISTS assigned_from_id UUID NULL').catch(() => {});
+
     // Initialize cron jobs
     initCronJobs();
 
