@@ -20,15 +20,19 @@ import {
   Shield,
   Heart,
   CheckSquare,
+  CalendarDays,
   X,
   AlertTriangle,
+  Search,
 } from "lucide-react";
+import GlobalSearch from "../components/GlobalSearch";
 
 const navItems = [
   { to: "/", icon: LayoutDashboard, label: "Dashboard", end: true },
   { to: "/leads", icon: Target, label: "Leads" },
   { to: "/nurturing", icon: Heart, label: "Nurturing" },
   { to: "/tasks", icon: CheckSquare, label: "Tasks" },
+  { to: "/calendar", icon: CalendarDays, label: "Calendar" },
   { to: "/templates", icon: FileText, label: "Templates" },
   { to: "/sequences", icon: Zap, label: "Sequences" },
   { to: "/bulk-import", icon: Upload, label: "Bulk Import" },
@@ -54,7 +58,20 @@ export default function DashboardLayout() {
   const { user, logout } = useAuthStore();
   const navigate = useNavigate();
   const [failedAlert, setFailedAlert] = useState<FailedLeadEvent | null>(null);
+  const [searchOpen, setSearchOpen] = useState(false);
   const sseRef = useRef<EventSource | null>(null);
+
+  // Global Ctrl+K / Cmd+K shortcut to open search
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+        e.preventDefault();
+        setSearchOpen(true);
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, []);
 
   // SSE for real-time events (lead_failed, temperature changes)
   useEffect(() => {
@@ -97,6 +114,19 @@ export default function DashboardLayout() {
           <p className="text-xs text-gray-500 mt-2">
             {user?.role === "super_admin" ? "Super Admin Panel" : (user?.tenant?.name || "Multi-Tenant CRM")}
           </p>
+        </div>
+        {/* Search button */}
+        <div className="px-3 pb-3">
+          <button
+            onClick={() => setSearchOpen(true)}
+            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg border border-gray-200 bg-gray-50 hover:bg-gray-100 text-gray-500 hover:text-gray-700 transition-colors text-sm group"
+          >
+            <Search className="w-4 h-4 flex-shrink-0" />
+            <span className="flex-1 text-left text-gray-400">Search…</span>
+            <kbd className="hidden lg:flex items-center gap-0.5 text-xs text-gray-400 bg-white border border-gray-200 px-1.5 py-0.5 rounded font-mono">
+              ⌘K
+            </kbd>
+          </button>
         </div>
         <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
           {/* Regular navigation - visible for all users */}
@@ -176,6 +206,9 @@ export default function DashboardLayout() {
           <Outlet />
         </div>
       </main>
+
+      {/* Global search palette */}
+      <GlobalSearch isOpen={searchOpen} onClose={() => setSearchOpen(false)} />
 
       {/* Lead FAILED alert popup */}
       {failedAlert && (

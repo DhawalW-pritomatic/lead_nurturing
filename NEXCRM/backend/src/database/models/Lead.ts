@@ -93,12 +93,12 @@ Lead.init(
     status: {
       type: DataTypes.ENUM(
         'NEW', 'ACTIVE', 'ENGAGED', 'MEETING_SCHEDULED', 'PROPOSAL_SENT',
-        'NEGOTIATION', 'CONVERTED', 'LOST', 'OPTED_OUT', 'STALE', 'FAILED'
+        'NEGOTIATION', 'CONVERTED', 'LOST', 'OPTED_OUT', 'FAILED'
       ),
       defaultValue: 'NEW',
     },
     lead_type: {
-      type: DataTypes.ENUM('COLD', 'WARM', 'HOT', 'STALE', 'CONVERTED', 'LOST', 'FAILED'),
+      type: DataTypes.ENUM('COLD', 'WARM', 'HOT', 'FAILED', 'CONVERTED', 'LOST'),
       defaultValue: 'COLD',
     },
     score: { type: DataTypes.INTEGER, defaultValue: 0 },

@@ -224,4 +224,40 @@ export class SequenceController {
       res.status(500).json({ error: error.message });
     }
   }
+
+  async clone(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      const original = await Sequence.findOne({ where: { id: req.params.id, tenant_id: req.user!.tenant_id } });
+      if (!original) { res.status(404).json({ error: 'Sequence not found.' }); return; }
+      const cloned = await Sequence.create({
+        tenant_id: req.user!.tenant_id,
+        application_type_id: (original as any).application_type_id,
+        name: `${(original as any).name} (Copy)`,
+        trigger_type: (original as any).trigger_type,
+        lead_type_target: (original as any).lead_type_target,
+        steps: (original as any).steps,
+        cold_followup_template_ids: (original as any).cold_followup_template_ids,
+        cold_followup_until_days: (original as any).cold_followup_until_days,
+        status: 'draft',
+        created_by: req.user!.id,
+      });
+      res.status(201).json(cloned);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  }
+
+  async unenrollLead(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      const enrollment = await SequenceEnrollment.findOne({ where: { id: req.params.id, tenant_id: req.user!.tenant_id } });
+      if (!enrollment) { res.status(404).json({ error: 'Enrollment not found.' }); return; }
+      await SequenceEnrollment.update(
+        { status: 'exited', exit_reason: 'manual_unenroll', completed_at: new Date() },
+        { where: { id: req.params.id, tenant_id: req.user!.tenant_id } }
+      );
+      res.json({ message: 'Lead unenrolled.' });
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  }
 }

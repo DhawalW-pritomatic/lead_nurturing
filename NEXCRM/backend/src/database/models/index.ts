@@ -22,6 +22,7 @@ import CallRecord from './CallRecord';
 import CallbackSchedule from './CallbackSchedule';
 import Task from './Task';
 import WhatsAppMessage from './WhatsAppMessage';
+import Meeting from './Meeting';
 
 // Tenant associations
 Tenant.hasMany(User, { foreignKey: 'tenant_id', as: 'users' });
@@ -150,6 +151,13 @@ Task.belongsTo(User, { foreignKey: 'created_by', as: 'creator' });
 WhatsAppMessage.belongsTo(Lead, { foreignKey: 'lead_id', as: 'lead' });
 WhatsAppMessage.belongsTo(User, { foreignKey: 'rep_id', as: 'rep' });
 
+// Meeting
+Meeting.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
+Meeting.belongsTo(Lead, { foreignKey: 'lead_id', as: 'lead' });
+Meeting.belongsTo(User, { foreignKey: 'assigned_to', as: 'assignedRep' });
+Meeting.belongsTo(User, { foreignKey: 'created_by', as: 'creator' });
+Lead.hasMany(Meeting, { foreignKey: 'lead_id', as: 'meetings' });
+
 export {
   Tenant,
   User,
@@ -175,4 +183,5 @@ export {
   CallbackSchedule,
   Task,
   WhatsAppMessage,
+  Meeting,
 };

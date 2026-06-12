@@ -203,4 +203,34 @@ export class TenantController {
       res.status(400).json({ error: error.message });
     }
   }
+
+  async getExtendedSettings(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      const tenant = await Tenant.findByPk(req.user!.tenant_id);
+      if (!tenant) { res.status(404).json({ error: 'Tenant not found.' }); return; }
+      res.json((tenant as any).settings || {});
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  }
+
+  async updateExtendedSettings(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      const tenant = await Tenant.findByPk(req.user!.tenant_id);
+      if (!tenant) { res.status(404).json({ error: 'Tenant not found.' }); return; }
+      const currentSettings: any = (tenant as any).settings || {};
+      const merged: any = { ...currentSettings };
+      for (const key of Object.keys(req.body)) {
+        if (typeof req.body[key] === 'object' && req.body[key] !== null && !Array.isArray(req.body[key])) {
+          merged[key] = { ...(currentSettings[key] || {}), ...req.body[key] };
+        } else {
+          merged[key] = req.body[key];
+        }
+      }
+      await (tenant as any).update({ settings: merged });
+      res.json(merged);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  }
 }

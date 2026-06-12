@@ -40,6 +40,9 @@ import callRoutes from './modules/calls/routes';
 import callbackRoutes from './modules/callbacks/routes';
 import taskRoutes from './modules/tasks/routes';
 import whatsappRoutes from './modules/whatsapp/routes';
+import searchRoutes from './modules/search/routes';
+import meetingRoutes from './modules/meetings/routes';
+import calendarRoutes from './modules/meetings/calendarRoutes';
 import twilioWebhooks from './webhooks/twilio';
 import whatsappWebhooks from './webhooks/whatsapp';
 
@@ -104,6 +107,9 @@ app.use('/api/calls', userRateLimiter, callRoutes);
 app.use('/api/callbacks', userRateLimiter, callbackRoutes);
 app.use('/api/tasks', userRateLimiter, taskRoutes);
 app.use('/api/whatsapp', userRateLimiter, whatsappRoutes);
+app.use('/api/search', userRateLimiter, searchRoutes);
+app.use('/api/meetings', userRateLimiter, meetingRoutes);
+app.use('/api/calendar', userRateLimiter, calendarRoutes);
 
 // Twilio webhooks (no auth — Twilio posts here directly)
 app.use('/webhooks/twilio', twilioWebhooks);

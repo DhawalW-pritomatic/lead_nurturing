@@ -59,6 +59,8 @@ export default function TasksPage() {
   const [leadSearch, setLeadSearch] = useState("");
   const [dragOver, setDragOver] = useState<TaskStatus | null>(null);
   const [openTask, setOpenTask] = useState<Task | null>(null);
+  const [filterAssignees, setFilterAssignees] = useState<Set<string>>(new Set());
+  const [filterUnassigned, setFilterUnassigned] = useState(false);
 
   const { data, isLoading } = useQuery<{ tasks: Task[]; grouped: GroupedTasks }>({
     queryKey: ["tasks"],
@@ -114,6 +116,35 @@ export default function TasksPage() {
     return counts;
   }, [data?.tasks]);
 
+  // Unique assignees for the filter bar
+  const uniqueAssignees = useMemo(() => {
+    const seen = new Map<string, { id: string; first_name: string; last_name: string }>();
+    (data?.tasks || []).forEach((t) => {
+      if (t.assignee && !seen.has(t.assignee.id)) seen.set(t.assignee.id, t.assignee);
+    });
+    return Array.from(seen.values());
+  }, [data?.tasks]);
+
+  // Filtered grouped tasks based on active person filter
+  const filteredGrouped = useMemo(() => {
+    if (filterAssignees.size === 0 && !filterUnassigned) return grouped;
+    const keep = (tasks: Task[]) => tasks.filter((t) => {
+      if (filterUnassigned && !t.assignee) return true;
+      if (filterAssignees.size > 0 && t.assignee && filterAssignees.has(t.assignee.id)) return true;
+      return false;
+    });
+    return { todo: keep(grouped.todo), in_progress: keep(grouped.in_progress), done: keep(grouped.done), cancelled: keep(grouped.cancelled) };
+  }, [grouped, filterAssignees, filterUnassigned]);
+
+  const toggleAssigneeFilter = (id: string) => {
+    setFilterUnassigned(false);
+    setFilterAssignees((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
   const handleDrop = (e: React.DragEvent, status: TaskStatus) => {
     const id = e.dataTransfer.getData("task_id");
     if (id) updateMutation.mutate({ id, status });
@@ -135,6 +166,78 @@ export default function TasksPage() {
           New Task
         </button>
       </div>
+
+      {/* ── Person filter bar ─────────────────────────────────────────── */}
+      {!isLoading && (data?.tasks || []).length > 0 && (
+        <div className="flex items-center gap-2 mb-5 flex-wrap">
+          <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide mr-1 flex-shrink-0">Assignee</span>
+
+          {/* All */}
+          <button
+            onClick={() => { setFilterAssignees(new Set()); setFilterUnassigned(false); }}
+            className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+              filterAssignees.size === 0 && !filterUnassigned
+                ? "bg-brand-600 text-white border-brand-600"
+                : "bg-white text-gray-600 border-gray-200 hover:border-brand-300 hover:text-brand-600"
+            }`}
+          >
+            All
+          </button>
+
+          {/* Unassigned */}
+          <button
+            onClick={() => { setFilterUnassigned((p) => !p); setFilterAssignees(new Set()); }}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+              filterUnassigned
+                ? "bg-gray-700 text-white border-gray-700"
+                : "bg-white text-gray-500 border-gray-200 hover:border-gray-400 hover:text-gray-700"
+            }`}
+          >
+            <span className={`w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 ${filterUnassigned ? "bg-white/20" : "bg-gray-100"}`}>
+              <User className={`w-2.5 h-2.5 ${filterUnassigned ? "text-white" : "text-gray-500"}`} />
+            </span>
+            Unassigned
+          </button>
+
+          {/* One chip per assignee */}
+          {uniqueAssignees.map((rep) => {
+            const active = filterAssignees.has(rep.id);
+            const count = taskCounts[rep.id] || 0;
+            return (
+              <button
+                key={rep.id}
+                onClick={() => toggleAssigneeFilter(rep.id)}
+                title={`${rep.first_name} ${rep.last_name} — ${count} active task${count !== 1 ? "s" : ""}`}
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${
+                  active
+                    ? "bg-brand-600 text-white border-brand-600"
+                    : "bg-white text-gray-600 border-gray-200 hover:border-brand-300 hover:text-brand-700"
+                }`}
+              >
+                <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0 ${
+                  active ? "bg-white/25 text-white" : "bg-brand-100 text-brand-700"
+                }`}>
+                  {rep.first_name[0]}{rep.last_name[0]}
+                </span>
+                {rep.first_name} {rep.last_name[0]}.
+                {count > 0 && (
+                  <span className={`ml-0.5 font-semibold ${active ? "text-white/80" : "text-gray-400"}`}>{count}</span>
+                )}
+              </button>
+            );
+          })}
+
+          {/* Clear button — shown only when a filter is active */}
+          {(filterAssignees.size > 0 || filterUnassigned) && (
+            <button
+              onClick={() => { setFilterAssignees(new Set()); setFilterUnassigned(false); }}
+              className="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs text-gray-400 border border-dashed border-gray-300 hover:text-red-500 hover:border-red-300 transition-colors ml-1"
+            >
+              <X className="w-3 h-3" /> Clear
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Create modal */}
       {showCreate && (
@@ -254,7 +357,7 @@ export default function TasksPage() {
       {isLoading ? (
         <div className="text-center py-20 text-gray-400">Loading tasks…</div>
       ) : (
-        <div className="grid grid-cols-4 gap-4 h-[calc(100vh-220px)] min-h-96">
+        <div className="grid grid-cols-4 gap-4 h-[calc(100vh-260px)] min-h-96">
           {COLUMNS.map((col) => (
             <div
               key={col.key}
@@ -268,21 +371,23 @@ export default function TasksPage() {
               <div className={`px-4 py-3 flex items-center gap-2 border-b border-gray-100 ${col.bg}`}>
                 <span className={`text-sm font-semibold ${col.color}`}>{col.label}</span>
                 <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${col.bg} ${col.color} border`}>
-                  {grouped[col.key].length}
+                  {filteredGrouped[col.key].length}
                 </span>
               </div>
 
               <div className="flex-1 overflow-y-auto p-3 space-y-2">
-                {grouped[col.key].map((task) => (
+                {filteredGrouped[col.key].map((task) => (
                   <TaskCard
                     key={task.id}
                     task={task}
+                    taskCounts={taskCounts}
                     onOpen={() => setOpenTask(task)}
                     onStatusChange={(status) => updateMutation.mutate({ id: task.id, status })}
                     onDelete={() => deleteMutation.mutate(task.id)}
+                    onReassign={(repId) => updateMutation.mutate({ id: task.id, assigned_to: repId })}
                   />
                 ))}
-                {grouped[col.key].length === 0 && (
+                {filteredGrouped[col.key].length === 0 && (
                   <p className="text-center text-xs text-gray-400 py-8">No tasks</p>
                 )}
               </div>
@@ -513,14 +618,17 @@ function TaskDetailModal({
 // ── Task Card ─────────────────────────────────────────────────────────────────
 
 function TaskCard({
-  task, onOpen, onStatusChange, onDelete,
+  task, taskCounts, onOpen, onStatusChange, onDelete, onReassign,
 }: {
   task: Task;
+  taskCounts: Record<string, number>;
   onOpen: () => void;
   onStatusChange: (s: TaskStatus) => void;
   onDelete: () => void;
+  onReassign: (repId: string) => void;
 }) {
   const [showMenu, setShowMenu] = useState(false);
+  const [assignAnchor, setAssignAnchor] = useState<HTMLElement | null>(null);
   const isOverdue = task.due_date && new Date(task.due_date) < new Date() && task.status !== "done";
 
   return (
@@ -589,12 +697,27 @@ function TaskCard({
       </div>
 
       <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-50">
-        {task.assignee ? (
-          <div className="flex items-center gap-1 text-xs text-gray-500">
-            <User className="w-3 h-3" />
-            {task.assignee.first_name}
-          </div>
-        ) : <span />}
+        {/* Clickable assignee — opens inline picker immediately */}
+        <button
+          onClick={(e) => { e.stopPropagation(); setAssignAnchor(e.currentTarget); }}
+          title={task.assignee ? `Reassign (currently ${task.assignee.first_name} ${task.assignee.last_name})` : "Assign to someone"}
+          className="flex items-center gap-1 text-xs text-gray-500 hover:text-brand-600 transition-colors group"
+        >
+          {task.assignee ? (
+            <>
+              <span className="w-4 h-4 rounded-full bg-brand-100 group-hover:bg-brand-200 flex items-center justify-center text-[9px] font-bold text-brand-700 transition-colors">
+                {task.assignee.first_name[0]}{task.assignee.last_name[0]}
+              </span>
+              {task.assignee.first_name}
+            </>
+          ) : (
+            <>
+              <User className="w-3 h-3" />
+              <span className="text-gray-400 group-hover:text-brand-600">Assign</span>
+            </>
+          )}
+        </button>
+
         {task.due_date && (
           <div className={`flex items-center gap-1 text-xs ${isOverdue ? "text-red-500 font-medium" : "text-gray-400"}`}>
             <Calendar className="w-3 h-3" />
@@ -602,6 +725,15 @@ function TaskCard({
           </div>
         )}
       </div>
+
+      {/* Inline assignee picker — fires mutation immediately, no Save needed */}
+      <RepPickerDropdown
+        isOpen={!!assignAnchor}
+        anchorEl={assignAnchor}
+        onClose={() => setAssignAnchor(null)}
+        onSelect={(rep) => { onReassign(rep.id); setAssignAnchor(null); }}
+        taskCounts={taskCounts}
+      />
     </div>
   );
 }

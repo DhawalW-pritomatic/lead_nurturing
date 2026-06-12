@@ -51,8 +51,7 @@ export default function LeadsPage() {
       HOT: "badge-hot",
       WARM: "badge-warm",
       COLD: "badge-cold",
-      STALE: "badge-stale",
-      FAILED: "bg-gray-200 text-gray-700 px-2.5 py-0.5 rounded-full text-xs font-medium",
+      FAILED: "badge-stale",
       CONVERTED: "badge-converted",
       LOST: "bg-red-50 text-red-700 px-2.5 py-0.5 rounded-full text-xs font-medium",
     };
@@ -70,7 +69,7 @@ export default function LeadsPage() {
       CONVERTED: "bg-green-50 text-green-700",
       LOST: "bg-red-50 text-red-700",
       OPTED_OUT: "bg-gray-50 text-gray-700",
-      STALE: "bg-gray-50 text-gray-600",
+      FAILED: "bg-red-50 text-red-700",
     };
     return (
       <span
@@ -135,7 +134,7 @@ export default function LeadsPage() {
               <option value="HOT">Hot</option>
               <option value="WARM">Warm</option>
               <option value="COLD">Cold</option>
-              <option value="STALE">Stale</option>
+              <option value="FAILED">Failed</option>
               <option value="CONVERTED">Converted</option>
             </select>
             <select
@@ -152,7 +151,7 @@ export default function LeadsPage() {
               <option value="ENGAGED">Engaged</option>
               <option value="CONVERTED">Converted</option>
               <option value="LOST">Lost</option>
-              <option value="STALE">Stale</option>
+              <option value="FAILED">Failed</option>
             </select>
             <select
               value={filters.source || ""}

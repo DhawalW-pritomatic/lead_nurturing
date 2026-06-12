@@ -7,6 +7,7 @@ import {
   Save, Shield, Building2, Users, Database, Activity, ExternalLink,
   User, Lock, Bell, Phone, MessageSquare, Clock, Zap,
   ToggleLeft, ChevronRight, CheckCircle, AlertTriangle,
+  Mail, Smartphone, BarChart2, Plus, Trash2, Globe, Key,
 } from "lucide-react";
 import { useAuthStore } from "../../store/authStore";
 import { formatDate } from "../../utils/dateUtils";
@@ -50,13 +51,17 @@ function SectionHeader({ icon: Icon, title, description }: { icon: any; title: s
   );
 }
 
-type Tab = "profile" | "workspace" | "nurturing" | "scheduler";
+type Tab = "profile" | "workspace" | "nurturing" | "email" | "whatsapp" | "notifications" | "scoring" | "scheduler";
 
 const NAV: { key: Tab; label: string; icon: any; adminOnly?: boolean }[] = [
-  { key: "profile",   label: "My Profile",          icon: User },
-  { key: "workspace", label: "Workspace",            icon: Building2, adminOnly: true },
-  { key: "nurturing", label: "Nurturing Settings",   icon: Zap,       adminOnly: true },
-  { key: "scheduler", label: "Scheduler & Calls",    icon: Phone,     adminOnly: true },
+  { key: "profile",       label: "My Profile",          icon: User },
+  { key: "workspace",     label: "Workspace",            icon: Building2,  adminOnly: true },
+  { key: "nurturing",     label: "Nurturing Settings",   icon: Zap,         adminOnly: true },
+  { key: "email",         label: "Email & Outreach",     icon: Mail,        adminOnly: true },
+  { key: "whatsapp",      label: "WhatsApp API",         icon: Smartphone,  adminOnly: true },
+  { key: "notifications", label: "Notifications",        icon: Bell,        adminOnly: true },
+  { key: "scoring",       label: "Lead Scoring",         icon: BarChart2,   adminOnly: true },
+  { key: "scheduler",     label: "Scheduler & Calls",    icon: Phone,       adminOnly: true },
 ];
 
 export default function SettingsPage() {
@@ -109,10 +114,14 @@ export default function SettingsPage() {
 
       {/* ── Main content ── */}
       <div className="flex-1 min-w-0">
-        {tab === "profile"   && <ProfileTab user={user} />}
-        {tab === "workspace" && <WorkspaceTab />}
-        {tab === "nurturing" && <NurturingTab />}
-        {tab === "scheduler" && <SchedulerTab />}
+        {tab === "profile"       && <ProfileTab user={user} />}
+        {tab === "workspace"     && <WorkspaceTab />}
+        {tab === "nurturing"     && <NurturingTab />}
+        {tab === "email"         && <EmailOutreachTab />}
+        {tab === "whatsapp"      && <WhatsAppMetaTab />}
+        {tab === "notifications" && <NotificationsTab />}
+        {tab === "scoring"       && <LeadScoringTab />}
+        {tab === "scheduler"     && <SchedulerTab />}
       </div>
     </div>
   );
@@ -450,7 +459,7 @@ function NurturingTab() {
 
       {/* Outreach intervals */}
       <div className="bg-white border border-gray-200 rounded-xl p-6">
-        <SectionHeader icon={Zap} title="Outreach Intervals" description="Control how often COLD and STALE leads are contacted. WARM and HOT leads have no automated cap — reps work them directly." />
+        <SectionHeader icon={Zap} title="Outreach Intervals" description="Control how often COLD and FAILED leads are contacted. WARM and HOT leads have no automated cap — reps work them directly." />
 
         <div className="grid grid-cols-3 gap-4 mb-2">
           <Field label="Cold Interval (days)" hint="Days between automated outreach to COLD leads">
@@ -458,7 +467,7 @@ function NurturingTab() {
               onChange={(e) => setForm({ ...f, cold_outreach_interval_days: +e.target.value })}
               className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
           </Field>
-          <Field label="Stale Re-engagement (days)" hint="Re-engage STALE leads after N days of inactivity">
+          <Field label="Failed Re-engagement (days)" hint="Re-engage FAILED leads after N days of inactivity">
             <input type="number" min={7} max={90} value={f.stale_reengagement_interval_days || 14}
               onChange={(e) => setForm({ ...f, stale_reengagement_interval_days: +e.target.value })}
               className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
@@ -663,6 +672,561 @@ function SchedulerTab() {
           className="flex items-center gap-2 px-5 py-2.5 bg-brand-600 text-white rounded-lg text-sm font-medium hover:bg-brand-700 disabled:opacity-50 transition-colors">
           <Save className="w-4 h-4" />
           {mutation.isPending ? "Saving…" : "Save Scheduler & Call Settings"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// TAB: Email & Outreach
+// ════════════════════════════════════════════════════════════════════════════
+function EmailOutreachTab() {
+  const queryClient = useQueryClient();
+
+  const { data: nurturing } = useQuery({
+    queryKey: ["nurturing-settings"],
+    queryFn: () => api.get("/tenants/nurturing-settings").then((r) => r.data),
+  });
+  const { data: extSettings } = useQuery({
+    queryKey: ["extended-settings"],
+    queryFn: () => api.get("/tenants/extended-settings").then((r) => r.data),
+  });
+
+  const [nForm, setNForm] = useState<any>(null);
+  const [eForm, setEForm] = useState<any>(null);
+  const [suppressInput, setSuppressInput] = useState("");
+
+  useEffect(() => { if (nurturing && !nForm) setNForm(nurturing); }, [nurturing]);
+  useEffect(() => { if (extSettings !== undefined && !eForm) setEForm(extSettings?.email_outreach || {}); }, [extSettings]);
+
+  const nurturingMutation = useMutation({
+    mutationFn: (data: any) => api.put("/tenants/nurturing-settings", data).then((r) => r.data),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["nurturing-settings"] }),
+    onError: (e: any) => toast.error(e.response?.data?.error || "Failed to save."),
+  });
+  const extMutation = useMutation({
+    mutationFn: (data: any) => api.put("/tenants/extended-settings", data).then((r) => r.data),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["extended-settings"] }),
+    onError: (e: any) => toast.error(e.response?.data?.error || "Failed to save."),
+  });
+
+  const handleSave = async () => {
+    if (!nForm) return;
+    await Promise.all([
+      nurturingMutation.mutateAsync({ max_messages_per_week: nForm.max_messages_per_week, max_cold_attempts: nForm.max_cold_attempts }),
+      extMutation.mutateAsync({ email_outreach: eForm || {} }),
+    ]);
+    toast.success("Email & outreach settings saved.");
+  };
+
+  const addSuppression = () => {
+    const email = suppressInput.trim().toLowerCase();
+    if (!email || !email.includes("@")) return;
+    const list: string[] = eForm?.suppression_list || [];
+    if (!list.includes(email)) setEForm({ ...eForm, suppression_list: [...list, email] });
+    setSuppressInput("");
+  };
+
+  const removeSuppression = (email: string) => {
+    setEForm({ ...(eForm || {}), suppression_list: (eForm?.suppression_list || []).filter((x: string) => x !== email) });
+  };
+
+  const isSaving = nurturingMutation.isPending || extMutation.isPending;
+  if (!nForm && !nurturing) return <div className="text-gray-400 text-sm py-12 text-center">Loading…</div>;
+  const n = nForm || nurturing || {};
+  const e = eForm || {};
+
+  return (
+    <div className="space-y-6">
+      <div className="bg-white border border-gray-200 rounded-xl p-6">
+        <SectionHeader icon={Mail} title="Email Frequency Caps" description="Limit how many emails a single contact receives to prevent spam fatigue." />
+        <div className="grid grid-cols-2 gap-4">
+          <Field label="Max emails per contact per week" hint="Across all sequences and one-off emails">
+            <div className="flex items-center gap-2">
+              <input type="number" min={1} max={21} value={n.max_messages_per_week || 3}
+                onChange={(ev) => setNForm({ ...n, max_messages_per_week: +ev.target.value })}
+                className="w-24 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
+              <span className="text-xs text-gray-400">emails / week</span>
+            </div>
+          </Field>
+          <Field label="Max cold outreach attempts" hint="Stop emailing a COLD lead after N unanswered attempts">
+            <div className="flex items-center gap-2">
+              <input type="number" min={1} max={30} value={n.max_cold_attempts || 5}
+                onChange={(ev) => setNForm({ ...n, max_cold_attempts: +ev.target.value })}
+                className="w-24 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
+              <span className="text-xs text-gray-400">attempts</span>
+            </div>
+          </Field>
+          <Field label="Daily sequence enrollment limit" hint="Max leads enrolled across all sequences per day">
+            <div className="flex items-center gap-2">
+              <input type="number" min={1} max={2000} value={e.daily_enrollment_limit || 200}
+                onChange={(ev) => setEForm({ ...e, daily_enrollment_limit: +ev.target.value })}
+                className="w-24 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
+              <span className="text-xs text-gray-400">leads / day</span>
+            </div>
+          </Field>
+          <Field label="Sender display name" hint="Shown as the From name in outreach emails">
+            <input type="text" value={e.sender_display_name || ""}
+              onChange={(ev) => setEForm({ ...e, sender_display_name: ev.target.value })}
+              placeholder="e.g. Riya from Pritomatic"
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
+          </Field>
+        </div>
+      </div>
+
+      <div className="bg-white border border-gray-200 rounded-xl p-6">
+        <SectionHeader icon={Zap} title="Sequence Behaviour" description="Control what happens when a lead interacts with your outreach." />
+        <div className="space-y-3">
+          {([
+            { key: "auto_unenroll_on_reply",  label: "Auto-unenroll on reply",          desc: "Remove a lead from the active sequence when they reply to any email" },
+            { key: "skip_weekends",           label: "Skip weekends for sequence steps", desc: "Sequence steps are never scheduled on Saturday or Sunday" },
+            { key: "track_opens",             label: "Track email opens",                desc: "Embed a 1×1 pixel to detect when the lead opens an email" },
+            { key: "track_clicks",            label: "Track link clicks",                desc: "Rewrite links in emails to record when the lead clicks" },
+          ] as const).map(({ key, label, desc }) => (
+            <div key={key} className="flex items-center justify-between p-4 border border-gray-200 rounded-xl hover:bg-gray-50">
+              <div>
+                <p className="text-sm font-medium text-gray-900">{label}</p>
+                <p className="text-xs text-gray-400 mt-0.5">{desc}</p>
+              </div>
+              <Toggle checked={!!(e as any)[key]} onChange={(v) => setEForm({ ...e, [key]: v })} />
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="bg-white border border-gray-200 rounded-xl p-6">
+        <SectionHeader icon={Shield} title="Suppression List" description="Emails on this list will never receive automated outreach, regardless of sequence enrollment." />
+        <div className="flex gap-2 mb-3">
+          <input type="email" value={suppressInput}
+            onChange={(ev) => setSuppressInput(ev.target.value)}
+            onKeyDown={(ev) => ev.key === "Enter" && addSuppression()}
+            placeholder="email@domain.com"
+            className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
+          <button onClick={addSuppression}
+            className="px-4 py-2 bg-brand-600 text-white rounded-lg text-sm font-medium hover:bg-brand-700 transition-colors flex items-center gap-1.5">
+            <Plus className="w-4 h-4" /> Add
+          </button>
+        </div>
+        {(e.suppression_list || []).length === 0 ? (
+          <p className="text-xs text-gray-400 py-4 text-center border border-dashed border-gray-200 rounded-lg">No suppressed emails yet</p>
+        ) : (
+          <div className="space-y-1.5 max-h-44 overflow-y-auto">
+            {(e.suppression_list as string[]).map((email) => (
+              <div key={email} className="flex items-center justify-between px-3 py-2 bg-gray-50 rounded-lg border border-gray-100">
+                <span className="text-sm text-gray-700 font-mono">{email}</span>
+                <button onClick={() => removeSuppression(email)} className="text-gray-400 hover:text-red-500 transition-colors ml-3">
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="flex justify-end">
+        <button onClick={handleSave} disabled={isSaving}
+          className="flex items-center gap-2 px-5 py-2.5 bg-brand-600 text-white rounded-lg text-sm font-medium hover:bg-brand-700 disabled:opacity-50 transition-colors">
+          <Save className="w-4 h-4" />
+          {isSaving ? "Saving…" : "Save Email & Outreach Settings"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// TAB: WhatsApp Meta API
+// ════════════════════════════════════════════════════════════════════════════
+function WhatsAppMetaTab() {
+  const queryClient = useQueryClient();
+
+  const { data: extSettings } = useQuery({
+    queryKey: ["extended-settings"],
+    queryFn: () => api.get("/tenants/extended-settings").then((r) => r.data),
+  });
+  const { data: phoneConfig } = useQuery({
+    queryKey: ["phone-config"],
+    queryFn: () => api.get("/tenants/phone-config").then((r) => r.data),
+  });
+
+  const [form, setForm] = useState<any>(null);
+  const [waEnabled, setWaEnabled] = useState(false);
+
+  useEffect(() => { if (extSettings !== undefined && !form) setForm(extSettings?.whatsapp_meta || {}); }, [extSettings]);
+  useEffect(() => { if (phoneConfig) setWaEnabled(!!phoneConfig.whatsapp_enabled); }, [phoneConfig]);
+
+  const extMutation = useMutation({
+    mutationFn: (data: any) => api.put("/tenants/extended-settings", data).then((r) => r.data),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["extended-settings"] }),
+    onError: (e: any) => toast.error(e.response?.data?.error || "Failed to save."),
+  });
+  const phoneMutation = useMutation({
+    mutationFn: (data: any) => api.put("/tenants/phone-config", data).then((r) => r.data),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["phone-config"] }),
+    onError: (e: any) => toast.error(e.response?.data?.error || "Failed to save."),
+  });
+
+  const handleSave = async () => {
+    await Promise.all([
+      extMutation.mutateAsync({ whatsapp_meta: form || {} }),
+      phoneMutation.mutateAsync({ whatsapp_enabled: waEnabled }),
+    ]);
+    toast.success("WhatsApp settings saved.");
+  };
+
+  const isSaving = extMutation.isPending || phoneMutation.isPending;
+  const f = form || {};
+
+  return (
+    <div className="space-y-6">
+      <div className="bg-white border border-gray-200 rounded-xl p-6">
+        <SectionHeader icon={Smartphone} title="WhatsApp Status" description="Enable WhatsApp messaging for leads. Configure credentials below before enabling." />
+        <div className="flex items-center justify-between p-4 border border-gray-200 rounded-xl">
+          <div>
+            <p className="text-sm font-medium text-gray-900">WhatsApp Messaging Enabled</p>
+            <p className="text-xs text-gray-400 mt-0.5">Allow automated and manual WhatsApp messages to be sent to leads</p>
+          </div>
+          <Toggle checked={waEnabled} onChange={setWaEnabled} />
+        </div>
+      </div>
+
+      <div className="bg-white border border-gray-200 rounded-xl p-6">
+        <SectionHeader icon={Globe} title="Meta Cloud API Credentials" description="Use Meta's direct Cloud API for higher throughput and no Twilio surcharge. Obtain these from Meta Business Manager → WhatsApp → API Setup." />
+
+        <div className="grid grid-cols-2 gap-4 mb-5">
+          <Field label="Meta Business Account ID (WABA ID)" hint="Found in Meta Business Manager → Business Settings → WhatsApp Accounts">
+            <input type="text" value={f.business_account_id || ""}
+              onChange={(e) => setForm({ ...f, business_account_id: e.target.value })}
+              placeholder="e.g. 123456789012345"
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-brand-500" />
+          </Field>
+          <Field label="Phone Number ID" hint="The specific number registered with your WABA. Found under WhatsApp → Getting Started.">
+            <input type="text" value={f.phone_number_id || ""}
+              onChange={(e) => setForm({ ...f, phone_number_id: e.target.value })}
+              placeholder="e.g. 987654321098765"
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-brand-500" />
+          </Field>
+          <Field label="Permanent API Token" hint="Generate a system user token in Meta Business Manager (never expires). Stored encrypted.">
+            <input type="password" value={f.api_token || ""}
+              onChange={(e) => setForm({ ...f, api_token: e.target.value })}
+              placeholder="••••••••"
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-brand-500" />
+          </Field>
+          <Field label="Webhook Verify Token" hint="A string you choose. Enter the same value in Meta → Webhooks → Verify Token.">
+            <input type="text" value={f.webhook_verify_token || ""}
+              onChange={(e) => setForm({ ...f, webhook_verify_token: e.target.value })}
+              placeholder="e.g. my_secret_verify_token"
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-brand-500" />
+          </Field>
+        </div>
+
+        <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 text-sm">
+          <p className="font-medium text-blue-800 mb-1 flex items-center gap-1.5"><Globe className="w-4 h-4" /> Webhook callback URL</p>
+          <p className="text-xs text-blue-700 mb-2">Register this URL in Meta Business Manager → WhatsApp → Configuration → Webhook:</p>
+          <code className="block text-xs bg-white text-blue-900 border border-blue-200 rounded-lg px-3 py-2 font-mono break-all select-all">
+            https://your-domain.com/webhooks/whatsapp/meta
+          </code>
+          <p className="text-xs text-blue-600 mt-2">Subscribe to <strong>messages</strong> and <strong>message_deliveries</strong> webhook fields.</p>
+        </div>
+      </div>
+
+      <div className="bg-white border border-gray-200 rounded-xl p-6">
+        <SectionHeader icon={MessageSquare} title="Opt-in Settings" description="WhatsApp Business Policy requires explicit opt-in before messaging users." />
+        <div className="space-y-3">
+          <div className="flex items-center justify-between p-4 border border-gray-200 rounded-xl">
+            <div>
+              <p className="text-sm font-medium text-gray-900">Require opt-in before messaging</p>
+              <p className="text-xs text-gray-400 mt-0.5">Only message leads who have explicitly opted in (recommended)</p>
+            </div>
+            <Toggle checked={f.opt_in_required !== false} onChange={(v) => setForm({ ...f, opt_in_required: v })} />
+          </div>
+        </div>
+        <div className="mt-4">
+          <Field label="Opt-in message text" hint="Message sent to ask for consent before starting WhatsApp nurturing">
+            <textarea value={f.opt_in_message || ""}
+              onChange={(e) => setForm({ ...f, opt_in_message: e.target.value })}
+              rows={3}
+              placeholder="Hi {{first_name}}, may we send you updates via WhatsApp? Reply YES to opt in."
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 resize-none" />
+          </Field>
+        </div>
+      </div>
+
+      <div className="flex justify-end">
+        <button onClick={handleSave} disabled={isSaving}
+          className="flex items-center gap-2 px-5 py-2.5 bg-brand-600 text-white rounded-lg text-sm font-medium hover:bg-brand-700 disabled:opacity-50 transition-colors">
+          <Save className="w-4 h-4" />
+          {isSaving ? "Saving…" : "Save WhatsApp Settings"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// TAB: Notifications
+// ════════════════════════════════════════════════════════════════════════════
+const NOTIF_EVENTS = [
+  { key: "lead_assigned",       label: "Lead assigned to me",              desc: "When a lead is assigned to you directly" },
+  { key: "temperature_changed", label: "Lead temperature changed",         desc: "When a lead moves from COLD → WARM → HOT (or reverses)" },
+  { key: "lead_converted",      label: "Lead converted",                   desc: "When any lead in the workspace is marked as Converted" },
+  { key: "sequence_completed",  label: "Sequence completed",               desc: "When a lead finishes all steps of a sequence" },
+  { key: "sla_breach",          label: "WARM lead SLA breach",             desc: "When a WARM lead is not contacted within the SLA window" },
+  { key: "call_failed",         label: "Lead marked FAILED",               desc: "When a lead hits the call threshold and is marked FAILED" },
+  { key: "lead_added",          label: "New lead added to workspace",      desc: "When any new lead is created or imported" },
+  { key: "callback_reminder",   label: "Callback reminder",                desc: "Before a scheduled callback is due" },
+];
+
+function NotificationsTab() {
+  const queryClient = useQueryClient();
+
+  const { data: extSettings } = useQuery({
+    queryKey: ["extended-settings"],
+    queryFn: () => api.get("/tenants/extended-settings").then((r) => r.data),
+  });
+
+  const [prefs, setPrefs] = useState<any>(null);
+
+  useEffect(() => {
+    if (extSettings !== undefined && !prefs) {
+      const defaults: any = { email_digest: "daily", in_app: true };
+      NOTIF_EVENTS.forEach(({ key }) => { defaults[key] = true; });
+      setPrefs({ ...defaults, ...(extSettings?.notification_prefs || {}) });
+    }
+  }, [extSettings]);
+
+  const mutation = useMutation({
+    mutationFn: (data: any) => api.put("/tenants/extended-settings", data).then((r) => r.data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["extended-settings"] });
+      toast.success("Notification preferences saved.");
+    },
+    onError: (e: any) => toast.error(e.response?.data?.error || "Failed to save."),
+  });
+
+  if (!prefs) return <div className="text-gray-400 text-sm py-12 text-center">Loading…</div>;
+
+  return (
+    <div className="space-y-6">
+      <div className="bg-white border border-gray-200 rounded-xl p-6">
+        <SectionHeader icon={Bell} title="Event Notifications" description="Choose which workspace events trigger a notification. These apply to all admins and managers." />
+        <div className="space-y-2">
+          {NOTIF_EVENTS.map(({ key, label, desc }) => (
+            <div key={key} className="flex items-center justify-between px-4 py-3 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors">
+              <div>
+                <p className="text-sm font-medium text-gray-900">{label}</p>
+                <p className="text-xs text-gray-400 mt-0.5">{desc}</p>
+              </div>
+              <Toggle checked={!!prefs[key]} onChange={(v) => setPrefs({ ...prefs, [key]: v })} />
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="bg-white border border-gray-200 rounded-xl p-6">
+        <SectionHeader icon={Mail} title="Delivery Preferences" description="Configure how and when notifications are delivered." />
+        <div className="space-y-4">
+          <div className="flex items-center justify-between p-4 border border-gray-200 rounded-xl">
+            <div>
+              <p className="text-sm font-medium text-gray-900">In-app notifications</p>
+              <p className="text-xs text-gray-400 mt-0.5">Show notification bell badge in the sidebar</p>
+            </div>
+            <Toggle checked={!!prefs.in_app} onChange={(v) => setPrefs({ ...prefs, in_app: v })} />
+          </div>
+          <Field label="Email digest frequency" hint="Receive a summary email of your notifications">
+            <select value={prefs.email_digest || "daily"}
+              onChange={(e) => setPrefs({ ...prefs, email_digest: e.target.value })}
+              className="w-full max-w-xs px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500">
+              <option value="off">Off — no email digest</option>
+              <option value="immediate">Immediate — email per event</option>
+              <option value="daily">Daily — morning summary</option>
+              <option value="weekly">Weekly — Monday summary</option>
+            </select>
+          </Field>
+        </div>
+      </div>
+
+      <div className="flex justify-end">
+        <button onClick={() => mutation.mutate({ notification_prefs: prefs })} disabled={mutation.isPending}
+          className="flex items-center gap-2 px-5 py-2.5 bg-brand-600 text-white rounded-lg text-sm font-medium hover:bg-brand-700 disabled:opacity-50 transition-colors">
+          <Save className="w-4 h-4" />
+          {mutation.isPending ? "Saving…" : "Save Notification Preferences"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// TAB: Lead Scoring
+// ════════════════════════════════════════════════════════════════════════════
+const DEFAULT_WEIGHTS: Record<string, number> = {
+  email_open:          2,
+  email_click:         5,
+  email_reply:         15,
+  call_answered:       10,
+  call_not_answered:  -2,
+  whatsapp_reply:      8,
+  meeting_booked:      25,
+  form_submitted:      20,
+  link_clicked:        3,
+  unsubscribed:       -30,
+};
+
+const WEIGHT_LABELS: Record<string, string> = {
+  email_open:         "Email opened",
+  email_click:        "Email link clicked",
+  email_reply:        "Email replied",
+  call_answered:      "Call answered",
+  call_not_answered:  "Call not answered",
+  whatsapp_reply:     "WhatsApp replied",
+  meeting_booked:     "Meeting booked",
+  form_submitted:     "Form submitted",
+  link_clicked:       "Asset link clicked",
+  unsubscribed:       "Unsubscribed",
+};
+
+function LeadScoringTab() {
+  const queryClient = useQueryClient();
+
+  const { data: profiles } = useQuery({
+    queryKey: ["scoring-profiles"],
+    queryFn: () => api.get("/tenants/scoring-profiles").then((r) => r.data),
+  });
+  const { data: extSettings } = useQuery({
+    queryKey: ["extended-settings"],
+    queryFn: () => api.get("/tenants/extended-settings").then((r) => r.data),
+  });
+
+  const activeProfile = profiles?.find((p: any) => p.is_active) || profiles?.[0];
+
+  const [weights, setWeights] = useState<Record<string, number>>(DEFAULT_WEIGHTS);
+  const [thresholds, setThresholds] = useState({ warm_min: 30, hot_min: 70 });
+  const [decay, setDecay] = useState({ enabled: false, rate_per_day: 1 });
+  const [initialized, setInitialized] = useState(false);
+
+  useEffect(() => {
+    if (activeProfile && extSettings !== undefined && !initialized) {
+      const ew: any = activeProfile.event_weights || {};
+      const tt: any = activeProfile.type_thresholds || {};
+      setWeights({ ...DEFAULT_WEIGHTS, ...ew });
+      setThresholds({
+        warm_min: tt.warm_min ?? 30,
+        hot_min:  tt.hot_min  ?? 70,
+      });
+      const scoringExt = extSettings?.scoring || {};
+      setDecay({ enabled: !!scoringExt.decay_enabled, rate_per_day: scoringExt.decay_rate_per_day ?? 1 });
+      setInitialized(true);
+    }
+  }, [activeProfile, extSettings, initialized]);
+
+  const profileMutation = useMutation({
+    mutationFn: (data: any) => api.put("/tenants/scoring-profiles", data).then((r) => r.data),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["scoring-profiles"] }),
+    onError: (e: any) => toast.error(e.response?.data?.error || "Failed to save."),
+  });
+  const extMutation = useMutation({
+    mutationFn: (data: any) => api.put("/tenants/extended-settings", data).then((r) => r.data),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["extended-settings"] }),
+    onError: (e: any) => toast.error(e.response?.data?.error || "Failed to save."),
+  });
+
+  const handleSave = async () => {
+    if (thresholds.warm_min >= thresholds.hot_min) {
+      toast.error("WARM min must be less than HOT min.");
+      return;
+    }
+    await Promise.all([
+      profileMutation.mutateAsync({ event_weights: weights, type_thresholds: thresholds }),
+      extMutation.mutateAsync({ scoring: { decay_enabled: decay.enabled, decay_rate_per_day: decay.rate_per_day } }),
+    ]);
+    toast.success("Lead scoring settings saved.");
+  };
+
+  const isSaving = profileMutation.isPending || extMutation.isPending;
+
+  return (
+    <div className="space-y-6">
+      {/* Temperature thresholds */}
+      <div className="bg-white border border-gray-200 rounded-xl p-6">
+        <SectionHeader icon={BarChart2} title="Temperature Thresholds" description="Define the score ranges that determine a lead's temperature. Scores are cumulative based on engagement events." />
+        <div className="grid grid-cols-3 gap-4 mb-4">
+          {[
+            { color: "bg-blue-100 text-blue-700 border-blue-200",   label: "COLD",  desc: `Score 0 – ${thresholds.warm_min - 1}`,                                note: "auto" },
+            { color: "bg-orange-100 text-orange-700 border-orange-200", label: "WARM", desc: `Score ${thresholds.warm_min} – ${thresholds.hot_min - 1}`,           note: "warm_min" },
+            { color: "bg-red-100 text-red-700 border-red-200",      label: "HOT",   desc: `Score ${thresholds.hot_min}+`,                                          note: "hot_min" },
+          ].map((t) => (
+            <div key={t.label} className={`p-4 rounded-xl border ${t.color.split(" ")[2]}`}>
+              <span className={`inline-block text-xs font-bold px-2 py-0.5 rounded-full mb-2 ${t.color.split(" ").slice(0,2).join(" ")}`}>{t.label}</span>
+              <p className="text-xs text-gray-500">{t.desc}</p>
+              {t.note !== "auto" && (
+                <div className="mt-2">
+                  <input type="number" min={1} max={999}
+                    value={t.note === "warm_min" ? thresholds.warm_min : thresholds.hot_min}
+                    onChange={(ev) => setThresholds((prev) => ({ ...prev, [t.note]: +ev.target.value }))}
+                    className="w-20 px-2 py-1 border border-gray-200 rounded text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
+                  <span className="text-xs text-gray-400 ml-1">min score</span>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+        {thresholds.warm_min >= thresholds.hot_min && (
+          <p className="text-xs text-red-500 flex items-center gap-1"><AlertTriangle className="w-3.5 h-3.5" /> WARM min must be less than HOT min.</p>
+        )}
+      </div>
+
+      {/* Event weights */}
+      <div className="bg-white border border-gray-200 rounded-xl p-6">
+        <SectionHeader icon={Key} title="Event Score Weights" description="Points added (or subtracted) when a lead performs each action. Positive = warmer, negative = penalise." />
+        <div className="grid grid-cols-2 gap-x-6 gap-y-3">
+          {Object.keys(DEFAULT_WEIGHTS).map((key) => (
+            <div key={key} className="flex items-center justify-between gap-3">
+              <label className="text-sm text-gray-700 flex-1">{WEIGHT_LABELS[key] || key}</label>
+              <div className="flex items-center gap-1.5">
+                <input type="number" min={-100} max={100}
+                  value={weights[key] ?? DEFAULT_WEIGHTS[key]}
+                  onChange={(ev) => setWeights({ ...weights, [key]: +ev.target.value })}
+                  className={`w-20 px-2 py-1.5 border rounded-lg text-sm text-center font-mono focus:outline-none focus:ring-2 focus:ring-brand-500 ${
+                    (weights[key] ?? DEFAULT_WEIGHTS[key]) < 0 ? "border-red-200 bg-red-50 text-red-700" : "border-gray-200"
+                  }`} />
+                <span className="text-xs text-gray-400 w-5">{(weights[key] ?? DEFAULT_WEIGHTS[key]) >= 0 ? "pts" : ""}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Score decay */}
+      <div className="bg-white border border-gray-200 rounded-xl p-6">
+        <SectionHeader icon={Activity} title="Score Decay" description="Automatically reduce a lead's score over time if there is no recent engagement activity." />
+        <div className="space-y-3">
+          <div className="flex items-center justify-between p-4 border border-gray-200 rounded-xl">
+            <div>
+              <p className="text-sm font-medium text-gray-900">Enable score decay</p>
+              <p className="text-xs text-gray-400 mt-0.5">Scores decrease automatically for inactive leads</p>
+            </div>
+            <Toggle checked={decay.enabled} onChange={(v) => setDecay({ ...decay, enabled: v })} />
+          </div>
+          {decay.enabled && (
+            <Field label="Decay rate" hint="Points subtracted per day of inactivity (no email opens, clicks, or calls)">
+              <div className="flex items-center gap-2">
+                <input type="number" min={0.1} max={50} step={0.5} value={decay.rate_per_day}
+                  onChange={(ev) => setDecay({ ...decay, rate_per_day: +ev.target.value })}
+                  className="w-24 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
+                <span className="text-xs text-gray-400">points / day</span>
+              </div>
+            </Field>
+          )}
+        </div>
+      </div>
+
+      <div className="flex justify-end">
+        <button onClick={handleSave} disabled={isSaving}
+          className="flex items-center gap-2 px-5 py-2.5 bg-brand-600 text-white rounded-lg text-sm font-medium hover:bg-brand-700 disabled:opacity-50 transition-colors">
+          <Save className="w-4 h-4" />
+          {isSaving ? "Saving…" : "Save Lead Scoring Settings"}
         </button>
       </div>
     </div>

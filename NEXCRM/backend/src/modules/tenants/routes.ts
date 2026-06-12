@@ -19,5 +19,7 @@ router.get('/scoring-profiles', controller.getScoringProfiles.bind(controller));
 router.put('/scoring-profiles', authorize('tenant_admin', 'super_admin'), controller.updateScoringProfile.bind(controller));
 router.get('/phone-config', controller.getPhoneConfig.bind(controller));
 router.put('/phone-config', authorize('tenant_admin', 'super_admin'), controller.savePhoneConfig.bind(controller));
+router.get('/extended-settings', controller.getExtendedSettings.bind(controller));
+router.put('/extended-settings', authorize('tenant_admin', 'super_admin'), controller.updateExtendedSettings.bind(controller));
 
 export default router;
