@@ -90,6 +90,19 @@ export class LeadController {
     }
   }
 
+  async addNote(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      if (!req.body.text?.trim()) {
+        res.status(400).json({ error: 'Note text is required.' });
+        return;
+      }
+      const note = await leadService.addNote(req.user!.tenant_id, req.params.id, req.user!.id, req.body.text.trim());
+      res.status(201).json(note);
+    } catch (error: any) {
+      res.status(error.statusCode || 400).json({ error: error.message });
+    }
+  }
+
   async getStats(req: AuthRequest, res: Response): Promise<void> {
     try {
       const stats = await leadService.getLeadStats(req.user!.tenant_id, req.user!.id, req.user!.role);

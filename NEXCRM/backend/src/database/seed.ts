@@ -81,8 +81,8 @@ const seed = async () => {
     const firstNames = ['Arjun', 'Vikram', 'Sneha', 'Pooja', 'Rohan', 'Ananya', 'Karan', 'Meera', 'Aditya', 'Kavya', 'Nikhil', 'Isha', 'Ravi', 'Anjali', 'Siddharth', 'Nisha', 'Deepak', 'Swati', 'Manish', 'Divya'];
     const lastNames = ['Verma', 'Gupta', 'Singh', 'Joshi', 'Nair', 'Reddy', 'Mehta', 'Iyer', 'Malhotra', 'Bhat', 'Mishra', 'Shetty', 'Rao', 'Desai', 'Kulkarni', 'Pandey', 'Shah', 'Chopra', 'Agarwal', 'Menon'];
     const companies = ['TCS', 'Infosys', 'Wipro', 'HCL', 'MindTree', 'Zoho', 'Freshworks', 'Razorpay', 'BYJU\'s', 'Flipkart', 'Swiggy', 'Zomato', 'PhonePe', 'CRED', 'Unacademy'];
-    const statuses = ['NEW', 'ACTIVE', 'ENGAGED', 'MEETING_SCHEDULED', 'PROPOSAL_SENT', 'NEGOTIATION', 'CONVERTED', 'LOST', 'STALE'];
-    const leadTypes = ['COLD', 'WARM', 'HOT', 'STALE', 'CONVERTED', 'LOST'];
+    const statuses = ['NEW', 'ACTIVE', 'ENGAGED', 'MEETING_SCHEDULED', 'PROPOSAL_SENT', 'NEGOTIATION', 'CONVERTED', 'LOST', 'FAILED'];
+    const leadTypes = ['COLD', 'WARM', 'HOT', 'FAILED', 'CONVERTED', 'LOST'];
 
     const allLeads: any[] = [];
     for (const tenant of tenants) {
@@ -100,7 +100,7 @@ const seed = async () => {
         // Some converted/lost/stale
         if (i % 12 === 0) leadType = 'CONVERTED';
         if (i % 15 === 0) leadType = 'LOST';
-        if (i % 20 === 0) leadType = 'STALE';
+        if (i % 20 === 0) leadType = 'FAILED';
 
         let status: string;
         switch (leadType) {
@@ -108,7 +108,7 @@ const seed = async () => {
           case 'WARM': status = ['ACTIVE', 'ENGAGED'][Math.floor(Math.random() * 2)]; break;
           case 'CONVERTED': status = 'CONVERTED'; break;
           case 'LOST': status = 'LOST'; break;
-          case 'STALE': status = 'STALE'; break;
+          case 'FAILED': status = 'FAILED'; break;
           default: status = ['NEW', 'ACTIVE'][Math.floor(Math.random() * 2)];
         }
 
@@ -203,7 +203,7 @@ const seed = async () => {
           ],
         },
         {
-          tenant_id: tenant.id, name: 'Stale Lead Re-engagement', trigger_type: 'stale', lead_type_target: 'STALE', status: 'active', created_by: adminUser?.id,
+          tenant_id: tenant.id, name: 'Failed Lead Re-engagement', trigger_type: 'failed', lead_type_target: 'FAILED', status: 'active', created_by: adminUser?.id,
           steps: [
             { day: 0, channel: 'email', template_category: 'reengagement', notes: 'We miss you' },
             { day: 7, channel: 'email', template_category: 'discount', notes: 'Special comeback offer' },
@@ -220,7 +220,7 @@ const seed = async () => {
         { tenant_id: tenant.id, name: 'Hot Lead Escalation', condition_expression: { operator: 'OR', conditions: [{ field: 'score', op: '>=', value: 80 }, { field: 'cta_clicks_48h', op: '>=', value: 3 }] }, action_config: { action: 'assign_senior_rep', sequence: 'hot_escalation', notify_manager: true }, priority: 1 },
         { tenant_id: tenant.id, name: 'Warm Lead SDR Assignment', condition_expression: { operator: 'AND', conditions: [{ field: 'score', op: '>=', value: 40 }, { field: 'score', op: '<', value: 80 }] }, action_config: { action: 'assign_round_robin', pool: 'sdr', sequence: 'warm_engagement' }, priority: 2 },
         { tenant_id: tenant.id, name: 'Cold Lead Nurture', condition_expression: { operator: 'AND', conditions: [{ field: 'score', op: '<', value: 40 }] }, action_config: { action: 'enroll_sequence', sequence: 'cold_nurture', no_rep_assign: true }, priority: 3 },
-        { tenant_id: tenant.id, name: 'Stale Re-engagement', condition_expression: { operator: 'AND', conditions: [{ field: 'days_inactive', op: '>=', value: 30 }] }, action_config: { action: 'mark_stale', sequence: 'stale_reengagement' }, priority: 4 },
+        { tenant_id: tenant.id, name: 'Failed Lead Re-engagement', condition_expression: { operator: 'AND', conditions: [{ field: 'days_inactive', op: '>=', value: 30 }] }, action_config: { action: 'mark_failed', sequence: 'failed_reengagement' }, priority: 4 },
       ]);
     }
     console.log('Created routing rules for all tenants.');

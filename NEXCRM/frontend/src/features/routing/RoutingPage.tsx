@@ -52,7 +52,7 @@ export default function RoutingPage() {
     assign_senior_rep: "Assign Senior Rep",
     assign_round_robin: "Round Robin Assignment",
     enroll_sequence: "Enroll in Sequence",
-    mark_stale: "Mark as Stale",
+    mark_failed: "Mark as Failed",
   };
 
   return (
@@ -164,7 +164,7 @@ export default function RoutingPage() {
               <option value="assign_senior_rep">Assign Senior Rep</option>
               <option value="assign_round_robin">Round Robin</option>
               <option value="enroll_sequence">Enroll in Sequence</option>
-              <option value="mark_stale">Mark Stale</option>
+              <option value="mark_failed">Mark as Failed</option>
             </select>
           </div>
           <div className="flex gap-3">

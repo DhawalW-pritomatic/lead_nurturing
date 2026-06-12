@@ -79,7 +79,7 @@ export default function DashboardPage() {
         { name: "Hot", value: overview.lead_types.hot, color: "#EF4444" },
         { name: "Warm", value: overview.lead_types.warm, color: "#F59E0B" },
         { name: "Cold", value: overview.lead_types.cold, color: "#3B82F6" },
-        { name: "Stale", value: overview.lead_types.stale, color: "#6B7280" },
+        { name: "Failed", value: overview.lead_types.failed, color: "#EF4444" },
         {
           name: "Converted",
           value: overview.lead_types.converted,

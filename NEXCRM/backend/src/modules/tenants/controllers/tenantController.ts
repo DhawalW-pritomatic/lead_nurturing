@@ -1,6 +1,6 @@
 import { Response } from 'express';
 import { AuthRequest } from '../../../middleware/auth';
-import { Tenant, NurturingSettings, ApplicationType, ScoringProfile } from '../../../database/models';
+import { Tenant, NurturingSettings, ApplicationType, ScoringProfile, TenantPhoneConfig } from '../../../database/models';
 
 export class TenantController {
   async getAll(req: AuthRequest, res: Response): Promise<void> {
@@ -124,6 +124,63 @@ export class TenantController {
     }
   }
 
+  async getPhoneConfig(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      const cfg = await TenantPhoneConfig.findOne({ where: { tenant_id: req.user!.tenant_id } });
+      if (!cfg) {
+        // Return defaults without inserting — user will save via PUT when ready
+        return res.json({
+          tenant_id: req.user!.tenant_id,
+          twilio_account_sid: '',
+          twilio_auth_token: '',
+          twilio_phone_number: '',
+          whatsapp_phone_number: '',
+          voice_enabled: false,
+          whatsapp_enabled: false,
+          call_recording_enabled: false,
+          call_window_start: '09:00',
+          call_window_end: '18:00',
+          max_call_attempts_before_fail: 6,
+          sla_warm_contact_hours: 24,
+        }) as any;
+      }
+      const plain = cfg.toJSON() as any;
+      if (plain.twilio_auth_token) {
+        plain.twilio_auth_token = '••••••••' + plain.twilio_auth_token.slice(-4);
+      }
+      res.json(plain);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  }
+
+  async savePhoneConfig(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      const tenantId = req.user!.tenant_id;
+      const allowed = [
+        'twilio_account_sid', 'twilio_auth_token', 'twilio_phone_number', 'whatsapp_phone_number',
+        'voice_enabled', 'whatsapp_enabled', 'call_recording_enabled',
+        'call_window_start', 'call_window_end', 'max_call_attempts_before_fail', 'sla_warm_contact_hours',
+      ];
+      const data: any = {};
+      for (const key of allowed) {
+        if (req.body[key] !== undefined) data[key] = req.body[key];
+      }
+      // Don't overwrite token if the masked placeholder is submitted back
+      if (data.twilio_auth_token?.startsWith('••••••••')) delete data.twilio_auth_token;
+
+      let cfg = await TenantPhoneConfig.findOne({ where: { tenant_id: tenantId } });
+      if (!cfg) {
+        cfg = await TenantPhoneConfig.create({ tenant_id: tenantId, ...data });
+      } else {
+        await cfg.update(data);
+      }
+      res.json(cfg);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  }
+
   async updateScoringProfile(req: AuthRequest, res: Response): Promise<void> {
     try {
       let profile = await ScoringProfile.findOne({ where: { tenant_id: req.user!.tenant_id, is_active: true } });
@@ -142,6 +199,36 @@ export class TenantController {
         });
       }
       res.json(profile);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  }
+
+  async getExtendedSettings(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      const tenant = await Tenant.findByPk(req.user!.tenant_id);
+      if (!tenant) { res.status(404).json({ error: 'Tenant not found.' }); return; }
+      res.json((tenant as any).settings || {});
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  }
+
+  async updateExtendedSettings(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      const tenant = await Tenant.findByPk(req.user!.tenant_id);
+      if (!tenant) { res.status(404).json({ error: 'Tenant not found.' }); return; }
+      const currentSettings: any = (tenant as any).settings || {};
+      const merged: any = { ...currentSettings };
+      for (const key of Object.keys(req.body)) {
+        if (typeof req.body[key] === 'object' && req.body[key] !== null && !Array.isArray(req.body[key])) {
+          merged[key] = { ...(currentSettings[key] || {}), ...req.body[key] };
+        } else {
+          merged[key] = req.body[key];
+        }
+      }
+      await (tenant as any).update({ settings: merged });
+      res.json(merged);
     } catch (error: any) {
       res.status(400).json({ error: error.message });
     }

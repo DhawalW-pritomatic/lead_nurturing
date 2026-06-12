@@ -71,11 +71,11 @@ const options: swaggerJsdoc.Options = {
             source: { type: 'string' },
             status: {
               type: 'string',
-              enum: ['NEW', 'ACTIVE', 'ENGAGED', 'MEETING_SCHEDULED', 'PROPOSAL_SENT', 'NEGOTIATION', 'CONVERTED', 'LOST', 'OPTED_OUT', 'STALE'],
+              enum: ['NEW', 'ACTIVE', 'ENGAGED', 'MEETING_SCHEDULED', 'PROPOSAL_SENT', 'NEGOTIATION', 'CONVERTED', 'LOST', 'OPTED_OUT', 'FAILED'],
             },
             lead_type: {
               type: 'string',
-              enum: ['COLD', 'WARM', 'HOT', 'STALE', 'CONVERTED', 'LOST'],
+              enum: ['COLD', 'WARM', 'HOT', 'FAILED', 'CONVERTED', 'LOST'],
             },
             score: { type: 'integer', minimum: 0, maximum: 200 },
             opted_out: { type: 'boolean' },
@@ -125,11 +125,11 @@ const options: swaggerJsdoc.Options = {
             name: { type: 'string' },
             trigger_type: {
               type: 'string',
-              enum: ['enrollment', 'score_change', 'stale', 'conversion'],
+              enum: ['enrollment', 'score_change', 'failed', 'conversion'],
             },
             lead_type_target: {
               type: 'string',
-              enum: ['COLD', 'WARM', 'HOT', 'STALE', 'CONVERTED'],
+              enum: ['COLD', 'WARM', 'HOT', 'FAILED', 'CONVERTED'],
             },
             status: {
               type: 'string',

@@ -161,7 +161,7 @@ export default function SchedulerPage() {
                 <option value="COLD">Cold</option>
                 <option value="WARM">Warm</option>
                 <option value="HOT">Hot</option>
-                <option value="STALE">Stale</option>
+                <option value="FAILED">Failed</option>
               </select>
             </div>
             <div>
@@ -179,7 +179,7 @@ export default function SchedulerPage() {
                 <option value="NEW">New</option>
                 <option value="ACTIVE">Active</option>
                 <option value="ENGAGED">Engaged</option>
-                <option value="STALE">Stale</option>
+                <option value="FAILED">Failed</option>
               </select>
             </div>
           </div>
