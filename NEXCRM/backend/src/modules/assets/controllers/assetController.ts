@@ -1,9 +1,9 @@
 import { Response } from 'express';
 import { AuthRequest } from '../../../middleware/auth';
 import { AssetProject, AssetFolder, Asset, Tenant } from '../../../database/models';
-import path from 'path';
 import fs from 'fs';
-import { config } from '../../../config';
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const archiver: (format: string, options?: any) => import('archiver').Archiver = require('archiver');
 
 export class AssetController {
   // Projects
@@ -64,6 +64,69 @@ export class AssetController {
     }
   }
 
+  async assignProject(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      const sourceProject = await AssetProject.findByPk(req.params.id, {
+        include: [{ model: AssetFolder, as: 'folders', include: [{ model: Asset, as: 'assets' }] }],
+      }) as any;
+
+      if (!sourceProject) {
+        res.status(404).json({ error: 'Project not found.' });
+        return;
+      }
+
+      const targetTenantId = req.body.tenant_id;
+      if (!targetTenantId) {
+        res.status(400).json({ error: 'target tenant_id is required.' });
+        return;
+      }
+
+      const targetTenant = await Tenant.findByPk(targetTenantId);
+      if (!targetTenant) {
+        res.status(404).json({ error: 'Target tenant not found.' });
+        return;
+      }
+
+      const newProject = await AssetProject.create({
+        tenant_id: targetTenantId,
+        name: sourceProject.name,
+        icon: sourceProject.icon,
+        description: sourceProject.description,
+        application_type_id: sourceProject.application_type_id,
+      });
+
+      const folders = sourceProject.folders || [];
+      for (const folder of folders) {
+        const newFolder = await AssetFolder.create({
+          tenant_id: targetTenantId,
+          project_id: newProject.id,
+          name: folder.name,
+          sort_order: folder.sort_order,
+        });
+
+        const assets = folder.assets || [];
+        for (const asset of assets) {
+          if (asset.is_active) {
+            await Asset.create({
+              tenant_id: targetTenantId,
+              folder_id: newFolder.id,
+              filename: asset.filename,
+              original_name: asset.original_name,
+              file_path: asset.file_path,
+              mime_type: asset.mime_type,
+              size_bytes: asset.size_bytes,
+              uploaded_by: req.user!.id,
+            });
+          }
+        }
+      }
+
+      res.status(201).json({ message: 'Template assigned successfully.', project: newProject });
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  }
+
   // Folders
   async createFolder(req: AuthRequest, res: Response): Promise<void> {
     try {
@@ -117,6 +180,44 @@ export class AssetController {
     }
   }
 
+  async exportFolder(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      const folderId = req.params.id;
+      const where: any = { folder_id: folderId, is_active: true };
+      if (req.user!.role !== 'super_admin') {
+        where.tenant_id = req.user!.tenant_id;
+      }
+
+      const assets = await Asset.findAll({ where });
+      if (!assets.length) {
+        res.status(404).json({ error: 'No assets in this folder.' });
+        return;
+      }
+
+      const folder = await AssetFolder.findByPk(folderId);
+      const zipName = `${(folder?.name || 'export').replace(/[^a-z0-9_-]/gi, '_')}.zip`;
+
+      res.setHeader('Content-Type', 'application/zip');
+      res.setHeader('Content-Disposition', `attachment; filename="${zipName}"`);
+
+      const archive = archiver('zip', { zlib: { level: 6 } });
+      archive.on('error', (err: Error) => {
+        if (!res.headersSent) res.status(500).json({ error: err.message });
+      });
+      archive.pipe(res);
+
+      for (const asset of assets) {
+        if (fs.existsSync(asset.file_path)) {
+          archive.file(asset.file_path, { name: asset.original_name });
+        }
+      }
+
+      await archive.finalize();
+    } catch (error: any) {
+      if (!res.headersSent) res.status(500).json({ error: error.message });
+    }
+  }
+
   // Assets (files)
   async uploadAsset(req: AuthRequest, res: Response): Promise<void> {
     try {
@@ -161,7 +262,6 @@ export class AssetController {
       const asset = await Asset.findOne({ where: { id: req.params.id, tenant_id: req.user!.tenant_id } });
       if (!asset) { res.status(404).json({ error: 'Asset not found.' }); return; }
 
-      // Increment download counter
       await Asset.update({ total_downloads: asset.total_downloads + 1 }, { where: { id: asset.id } });
 
       res.download(asset.file_path, asset.original_name);
@@ -175,7 +275,6 @@ export class AssetController {
       const asset = await Asset.findOne({ where: { id: req.params.id, tenant_id: req.user!.tenant_id } });
       if (!asset) { res.status(404).json({ error: 'Asset not found.' }); return; }
 
-      // Soft delete
       await Asset.update({ is_active: false }, { where: { id: asset.id } });
       res.json({ message: 'Asset deleted.' });
     } catch (error: any) {
