@@ -22,6 +22,7 @@ const upload = multer({
 router.use(authenticate, tenantIsolation);
 
 router.get('/stats', controller.getStats.bind(controller));
+router.get('/kanban', controller.getKanban.bind(controller));
 router.get('/', controller.getAll.bind(controller));
 router.post('/', controller.create.bind(controller));
 router.get('/:id', controller.getById.bind(controller));

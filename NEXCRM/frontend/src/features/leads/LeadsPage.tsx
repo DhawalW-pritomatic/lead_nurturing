@@ -1,25 +1,19 @@
 import { useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router-dom";
 import api from "../../services/api";
-import toast from "react-hot-toast";
+import KanbanView from "./KanbanView";
 import {
-  Plus,
-  Search,
-  Filter,
-  Upload,
-  Download,
-  ChevronLeft,
-  ChevronRight,
+  Plus, Search, Filter, ChevronLeft, ChevronRight, LayoutList, Trello,
 } from "lucide-react";
 
 export default function LeadsPage() {
+  const [view, setView] = useState<"table" | "kanban">("table");
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const [filters, setFilters] = useState<any>({});
   const [showFilters, setShowFilters] = useState(false);
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
 
   const { data, isLoading } = useQuery({
     queryKey: ["leads", page, search, filters],
@@ -73,14 +67,36 @@ export default function LeadsPage() {
           </p>
         </div>
         <div className="flex items-center gap-3">
+          {/* View toggle */}
+          <div className="flex rounded-lg border border-gray-200 overflow-hidden">
+            <button
+              onClick={() => setView("table")}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium transition-colors ${
+                view === "table" ? "bg-brand-600 text-white" : "bg-white text-gray-600 hover:bg-gray-50"
+              }`}
+            >
+              <LayoutList className="w-4 h-4" /> Table
+            </button>
+            <button
+              onClick={() => setView("kanban")}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium transition-colors ${
+                view === "kanban" ? "bg-brand-600 text-white" : "bg-white text-gray-600 hover:bg-gray-50"
+              }`}
+            >
+              <Trello className="w-4 h-4" /> Kanban
+            </button>
+          </div>
           <Link to="/leads/new" className="btn-primary flex items-center gap-2">
             <Plus className="w-4 h-4" /> Enroll Lead
           </Link>
         </div>
       </div>
 
-      {/* Search & Filters */}
-      <div className="card">
+      {/* Kanban view */}
+      {view === "kanban" && <KanbanView />}
+
+      {/* Table view */}
+      {view === "table" && <div className="card">
         <div className="flex items-center gap-4 mb-4">
           <div className="flex-1 relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -284,7 +300,8 @@ export default function LeadsPage() {
             </div>
           </div>
         )}
-      </div>
+      </div>}
+
     </div>
   );
 }

@@ -2,6 +2,9 @@ import { Lead, LeadQuery, OutreachRecord, EngagementEvent, User, Tenant } from '
 import { Op } from 'sequelize';
 import { ScoringService } from '../../scoring/services/scoringService';
 import { NotificationService } from '../../notifications/services/notificationService';
+import { TaskService } from '../../tasks/services/taskService';
+
+const taskService = new TaskService();
 import { config } from '../../../config';
 import { v4 as uuidv4 } from 'uuid';
 import nodemailer from 'nodemailer';
@@ -262,6 +265,12 @@ export class TrackingService {
 
     await scoringService.updateScore(tenantId, lead.id, 'inbound_query_received', 12);
 
+    // Auto-create a reply task for the owning rep
+    const ownerUserId = (query as any).owner_user_id || lead.assigned_rep_id || lead.enrolled_by;
+    taskService.autoCreateForInboundQuery(tenantId, lead, ownerUserId).catch(e =>
+      console.error('[AutoTask] Inbound query task failed:', e)
+    );
+
     return query;
   }
 
@@ -424,10 +433,13 @@ export class TrackingService {
     });
   }
 
-  async getQueryHistory(tenantId: string, query: any): Promise<any> {
+  async getQueryHistory(tenantId: string, query: any, role: string = '', userId?: string): Promise<any> {
     const where: any = { tenant_id: tenantId };
     if (query.status) where.status = query.status;
     if (query.lead_id) where.lead_id = query.lead_id;
+    if (['sales_rep', 'senior_sales_rep'].includes(role) && userId) {
+      where.owner_user_id = userId;
+    }
 
     const page = parseInt(query.page || '1');
     const limit = parseInt(query.limit || '50');
@@ -453,18 +465,22 @@ export class TrackingService {
     };
   }
 
-  async getQueryStats(tenantId: string): Promise<any> {
+  async getQueryStats(tenantId: string, role: string = '', userId?: string): Promise<any> {
+    const base: any = { tenant_id: tenantId };
+    if (['sales_rep', 'senior_sales_rep'].includes(role) && userId) {
+      base.owner_user_id = userId;
+    }
     const [total, fromEmail, pending, answered, answeredBySales, answeredByAdmins] = await Promise.all([
-      LeadQuery.count({ where: { tenant_id: tenantId } }),
-      LeadQuery.count({ where: { tenant_id: tenantId, source: 'email' } }),
-      LeadQuery.count({ where: { tenant_id: tenantId, status: 'pending' } }),
-      LeadQuery.count({ where: { tenant_id: tenantId, status: 'answered' } }),
+      LeadQuery.count({ where: { ...base } }),
+      LeadQuery.count({ where: { ...base, source: 'email' } }),
+      LeadQuery.count({ where: { ...base, status: 'pending' } }),
+      LeadQuery.count({ where: { ...base, status: 'answered' } }),
       LeadQuery.count({
-        where: { tenant_id: tenantId, status: 'answered' },
+        where: { ...base, status: 'answered' },
         include: [{ model: User, as: 'answeredBy', where: { role: { [Op.in]: ['sales_rep', 'senior_sales_rep', 'sales_manager'] } }, attributes: [] }],
       }),
       LeadQuery.count({
-        where: { tenant_id: tenantId, status: 'answered' },
+        where: { ...base, status: 'answered' },
         include: [{ model: User, as: 'answeredBy', where: { role: { [Op.in]: ['tenant_admin', 'super_admin'] } }, attributes: [] }],
       }),
     ]);

@@ -34,9 +34,12 @@ export default function UsersPage() {
     queryFn: () => api.get("/users").then((r) => r.data),
   });
 
+  const canViewPerformance = isSuperAdmin || ["tenant_admin", "sales_manager"].includes(currentUser?.role ?? "");
+
   const { data: performance } = useQuery({
     queryKey: ["rep-performance"],
     queryFn: () => api.get("/users/performance").then((r) => r.data),
+    enabled: canViewPerformance,
   });
 
   const createMutation = useMutation({

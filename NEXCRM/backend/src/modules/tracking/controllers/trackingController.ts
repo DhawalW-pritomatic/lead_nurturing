@@ -78,7 +78,7 @@ export class TrackingController {
 
   async getQueryHistory(req: AuthRequest, res: Response): Promise<void> {
     try {
-      const history = await trackingService.getQueryHistory(req.user!.tenant_id, req.query);
+      const history = await trackingService.getQueryHistory(req.user!.tenant_id, req.query, req.user!.role, req.user!.id);
       res.json(history);
     } catch (error: any) {
       res.status(500).json({ error: error.message });
@@ -87,7 +87,7 @@ export class TrackingController {
 
   async getQueryStats(req: AuthRequest, res: Response): Promise<void> {
     try {
-      const stats = await trackingService.getQueryStats(req.user!.tenant_id);
+      const stats = await trackingService.getQueryStats(req.user!.tenant_id, req.user!.role, req.user!.id);
       res.json(stats);
     } catch (error: any) {
       res.status(500).json({ error: error.message });

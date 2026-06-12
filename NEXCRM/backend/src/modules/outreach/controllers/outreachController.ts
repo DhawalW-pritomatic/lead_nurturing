@@ -17,7 +17,7 @@ export class OutreachController {
 
   async getHistory(req: AuthRequest, res: Response): Promise<void> {
     try {
-      const result = await outreachService.getOutreachHistory(req.user!.tenant_id, req.query, req.user!.role);
+      const result = await outreachService.getOutreachHistory(req.user!.tenant_id, req.query, req.user!.role, req.user!.id);
       res.json(result);
     } catch (error: any) {
       res.status(500).json({ error: error.message });
@@ -26,7 +26,7 @@ export class OutreachController {
 
   async getStats(req: AuthRequest, res: Response): Promise<void> {
     try {
-      const stats = await outreachService.getOutreachStats(req.user!.tenant_id, req.user!.role);
+      const stats = await outreachService.getOutreachStats(req.user!.tenant_id, req.user!.role, req.user!.id);
       res.json(stats);
     } catch (error: any) {
       res.status(500).json({ error: error.message });

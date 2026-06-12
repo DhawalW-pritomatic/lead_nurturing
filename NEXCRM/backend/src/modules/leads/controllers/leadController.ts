@@ -98,4 +98,13 @@ export class LeadController {
       res.status(500).json({ error: error.message });
     }
   }
+
+  async getKanban(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      const result = await leadService.getKanbanData(req.user!.tenant_id, req.user!.id, req.user!.role, req.query);
+      res.json(result);
+    } catch (error: any) {
+      res.status(error.statusCode || 500).json({ error: error.message });
+    }
+  }
 }

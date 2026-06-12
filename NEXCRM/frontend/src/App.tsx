@@ -3,6 +3,7 @@ import { useAuthStore } from "./store/authStore";
 import DashboardLayout from "./layouts/DashboardLayout";
 import LoginPage from "./features/auth/LoginPage";
 import DashboardPage from "./features/dashboard/DashboardPage";
+import RepDashboard from "./features/dashboard/RepDashboard";
 import LeadsPage from "./features/leads/LeadsPage";
 import LeadDetailPage from "./features/leads/LeadDetailPage";
 import LeadCreatePage from "./features/leads/LeadCreatePage";
@@ -19,17 +20,22 @@ import BulkImportPage from "./features/bulk-import/BulkImportPage";
 import NotificationsPage from "./features/notifications/NotificationsPage";
 import AdminPage from "./features/admin/AdminPage";
 import ProfilePage from "./features/profile/ProfilePage";
+import TasksPage from "./features/tasks/TasksPage";
+import AttendancePage from "./features/attendance/AttendancePage";
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   return isAuthenticated ? <>{children}</> : <Navigate to="/login" />;
 }
 
-// Redirect super_admin to admin panel
+// Redirect super_admin to admin panel; reps to their personal dashboard
 function DashboardRedirect() {
   const user = useAuthStore((s) => s.user);
   if (user?.role === "super_admin") {
     return <Navigate to="/admin" replace />;
+  }
+  if (user?.role === "sales_rep" || user?.role === "senior_sales_rep") {
+    return <RepDashboard />;
   }
   return <DashboardPage />;
 }
@@ -47,6 +53,8 @@ export default function App() {
         }
       >
         <Route index element={<DashboardRedirect />} />
+        <Route path="tasks" element={<TasksPage />} />
+        <Route path="attendance" element={<AttendancePage />} />
         <Route path="leads" element={<LeadsPage />} />
         <Route path="leads/new" element={<LeadCreatePage />} />
         <Route path="leads/:id" element={<LeadDetailPage />} />

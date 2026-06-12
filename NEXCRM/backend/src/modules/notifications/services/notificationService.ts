@@ -23,11 +23,18 @@ export class NotificationService {
   async getAll(tenantId: string, query: any, role: string = ''): Promise<any> {
     const { page = 1, limit = 50, type, is_read, user_id } = query;
     const isSuperAdmin = role === 'super_admin';
+    const isRep = ['sales_rep', 'senior_sales_rep'].includes(role);
     const where: any = {};
     if (!isSuperAdmin) where.tenant_id = tenantId;
     if (type) where.type = type;
     if (is_read !== undefined) where.is_read = is_read === 'true';
-    if (user_id && !isSuperAdmin) where[Op.or] = [{ user_id }, { user_id: null }];
+    if (user_id && !isSuperAdmin) {
+      if (isRep) {
+        where.user_id = user_id;
+      } else {
+        where[Op.or] = [{ user_id }, { user_id: null }];
+      }
+    }
     if (query.tenant_id && isSuperAdmin) where.tenant_id = query.tenant_id;
 
     const include: any[] = [];
@@ -55,17 +62,31 @@ export class NotificationService {
 
   async markAllAsRead(tenantId: string, userId?: string, role: string = ''): Promise<void> {
     const isSuperAdmin = role === 'super_admin';
+    const isRep = ['sales_rep', 'senior_sales_rep'].includes(role);
     const where: any = { is_read: false };
     if (!isSuperAdmin) where.tenant_id = tenantId;
-    if (userId && !isSuperAdmin) where[Op.or] = [{ user_id: userId }, { user_id: null }];
+    if (userId && !isSuperAdmin) {
+      if (isRep) {
+        where.user_id = userId;
+      } else {
+        where[Op.or] = [{ user_id: userId }, { user_id: null }];
+      }
+    }
     await Notification.update({ is_read: true }, { where });
   }
 
   async getUnreadCount(tenantId: string, userId?: string, role: string = ''): Promise<number> {
     const isSuperAdmin = role === 'super_admin';
+    const isRep = ['sales_rep', 'senior_sales_rep'].includes(role);
     const where: any = { is_read: false };
     if (!isSuperAdmin) where.tenant_id = tenantId;
-    if (userId && !isSuperAdmin) where[Op.or] = [{ user_id: userId }, { user_id: null }];
+    if (userId && !isSuperAdmin) {
+      if (isRep) {
+        where.user_id = userId;
+      } else {
+        where[Op.or] = [{ user_id: userId }, { user_id: null }];
+      }
+    }
     return Notification.count({ where });
   }
 

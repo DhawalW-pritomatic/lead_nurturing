@@ -17,6 +17,8 @@ import NurturingSettings from './NurturingSettings';
 import Notification from './Notification';
 import EmailSchedule from './EmailSchedule';
 import LeadQuery from './LeadQuery';
+import Task from './Task';
+import RepAvailability from './RepAvailability';
 
 // Tenant associations
 Tenant.hasMany(User, { foreignKey: 'tenant_id', as: 'users' });
@@ -117,6 +119,21 @@ RoutingRule.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
 AuditLog.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
 AuditLog.belongsTo(User, { foreignKey: 'actor_id', as: 'actor' });
 
+// Task
+Task.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
+Task.belongsTo(Lead, { foreignKey: 'lead_id', as: 'lead' });
+Task.belongsTo(User, { foreignKey: 'created_by_user_id', as: 'createdBy' });
+Task.belongsTo(User, { foreignKey: 'assigned_to_user_id', as: 'assignedTo' });
+Lead.hasMany(Task, { foreignKey: 'lead_id', as: 'tasks' });
+Tenant.hasMany(Task, { foreignKey: 'tenant_id', as: 'tasks' });
+User.hasMany(Task, { foreignKey: 'assigned_to_user_id', as: 'assignedTasks' });
+
+// RepAvailability
+RepAvailability.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
+RepAvailability.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
+User.hasMany(RepAvailability, { foreignKey: 'user_id', as: 'availability' });
+Tenant.hasMany(RepAvailability, { foreignKey: 'tenant_id', as: 'repAvailability' });
+
 export {
   Tenant,
   User,
@@ -137,4 +154,6 @@ export {
   Notification,
   EmailSchedule,
   LeadQuery,
+  Task,
+  RepAvailability,
 };

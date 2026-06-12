@@ -1,7 +1,7 @@
 import { Op } from 'sequelize';
 import fs from 'fs';
 import csvParser from 'csv-parser';
-import { Lead, User, ApplicationType, EngagementEvent, OutreachRecord, SequenceEnrollment, Tenant } from '../../../database/models';
+import { Lead, User, ApplicationType, EngagementEvent, OutreachRecord, SequenceEnrollment, Tenant, RepAvailability } from '../../../database/models';
 import { AppError } from '../../../middleware/errorHandler';
 import sequelize from '../../../config/database';
 import { NotificationService } from '../../notifications/services/notificationService';
@@ -339,5 +339,126 @@ export class LeadService {
     ]);
 
     return { total, by_type: byType, by_status: byStatus, by_source: bySource, new_this_week: recentLeads };
+  }
+
+  async getKanbanData(tenantId: string, userId: string, role: string, query: any): Promise<any> {
+    const { group_by = 'status' } = query;
+
+    const baseWhere: any = { tenant_id: tenantId };
+    if (role === 'sales_rep') baseWhere.assigned_rep_id = userId;
+
+    const repInclude = [
+      { model: User, as: 'assignedRep', attributes: ['id', 'first_name', 'last_name'] },
+    ];
+
+    if (group_by === 'status') {
+      const PIPELINE_STATUSES = ['NEW', 'ACTIVE', 'ENGAGED', 'MEETING_SCHEDULED', 'PROPOSAL_SENT', 'NEGOTIATION', 'CONVERTED', 'LOST'];
+      const STATUS_META: Record<string, { label: string; color: string }> = {
+        NEW:               { label: 'New',               color: 'blue'   },
+        ACTIVE:            { label: 'Active',             color: 'indigo' },
+        ENGAGED:           { label: 'Engaged',            color: 'purple' },
+        MEETING_SCHEDULED: { label: 'Meeting Scheduled',  color: 'cyan'   },
+        PROPOSAL_SENT:     { label: 'Proposal Sent',      color: 'teal'   },
+        NEGOTIATION:       { label: 'Negotiation',        color: 'yellow' },
+        CONVERTED:         { label: 'Converted',          color: 'green'  },
+        LOST:              { label: 'Lost',               color: 'red'    },
+      };
+
+      const [allLeads, countRows] = await Promise.all([
+        Lead.findAll({
+          where: { ...baseWhere, status: { [Op.in]: PIPELINE_STATUSES } },
+          include: repInclude,
+          order: [['score', 'DESC']],
+          limit: 500,
+        }),
+        Lead.findAll({
+          where: { ...baseWhere, status: { [Op.in]: PIPELINE_STATUSES } },
+          attributes: ['status', [sequelize.fn('COUNT', sequelize.col('id')), 'count']],
+          group: ['status'],
+          raw: true,
+        }),
+      ]);
+
+      const countMap = new Map((countRows as any[]).map(r => [r.status, parseInt(r.count)]));
+      const grouped = new Map<string, any[]>(PIPELINE_STATUSES.map(s => [s, []]));
+      for (const lead of allLeads) {
+        const col = grouped.get(lead.status);
+        if (col && col.length < 50) col.push(lead);
+      }
+
+      const columns = PIPELINE_STATUSES.map(status => ({
+        id: status,
+        label: STATUS_META[status].label,
+        color: STATUS_META[status].color,
+        leads: grouped.get(status) ?? [],
+        count: countMap.get(status) ?? 0,
+      }));
+
+      return { group_by: 'status', columns };
+    }
+
+    if (group_by === 'rep') {
+      const today = new Date().toISOString().split('T')[0];
+
+      const [reps, availRecords, allLeads, countRows] = await Promise.all([
+        User.findAll({
+          where: {
+            tenant_id: tenantId,
+            role: { [Op.in]: ['sales_rep', 'senior_sales_rep', 'sales_manager', 'tenant_admin'] },
+          },
+          attributes: ['id', 'first_name', 'last_name', 'email', 'role'],
+        }),
+        RepAvailability.findAll({ where: { tenant_id: tenantId, date: today } }),
+        Lead.findAll({
+          where: { ...baseWhere, status: { [Op.notIn]: ['OPTED_OUT'] } },
+          order: [['score', 'DESC']],
+          limit: 1000,
+        }),
+        Lead.findAll({
+          where: { ...baseWhere, status: { [Op.notIn]: ['OPTED_OUT'] } },
+          attributes: ['assigned_rep_id', [sequelize.fn('COUNT', sequelize.col('id')), 'count']],
+          group: ['assigned_rep_id'],
+          raw: true,
+        }),
+      ]);
+
+      const availMap = new Map((availRecords as any[]).map(r => [r.user_id, r.status]));
+      const repCountMap = new Map((countRows as any[]).map(r => [r.assigned_rep_id ?? 'unassigned', parseInt(r.count)]));
+
+      const repLeadMap = new Map<string, any[]>();
+      const unassignedLeads: any[] = [];
+      for (const lead of allLeads) {
+        if (!lead.assigned_rep_id) {
+          if (unassignedLeads.length < 50) unassignedLeads.push(lead);
+        } else {
+          if (!repLeadMap.has(lead.assigned_rep_id)) repLeadMap.set(lead.assigned_rep_id, []);
+          const col = repLeadMap.get(lead.assigned_rep_id)!;
+          if (col.length < 50) col.push(lead);
+        }
+      }
+
+      const columns = [
+        {
+          id: 'unassigned',
+          label: 'Unassigned',
+          rep: null,
+          availability: null,
+          leads: unassignedLeads,
+          count: repCountMap.get('unassigned') ?? unassignedLeads.length,
+        },
+        ...(reps as any[]).map(rep => ({
+          id: rep.id,
+          label: `${rep.first_name} ${rep.last_name}`,
+          rep,
+          availability: availMap.get(rep.id) ?? 'available',
+          leads: repLeadMap.get(rep.id) ?? [],
+          count: repCountMap.get(rep.id) ?? 0,
+        })),
+      ];
+
+      return { group_by: 'rep', columns };
+    }
+
+    throw new AppError('group_by must be "status" or "rep".', 400);
   }
 }

@@ -15,5 +15,8 @@ router.get('/outreach', controller.getOutreachStats.bind(controller));
 router.get('/engagement', controller.getEngagementActivity.bind(controller));
 router.get('/score-distribution', controller.getScoreDistribution.bind(controller));
 router.get('/leaderboard', controller.getRepLeaderboard.bind(controller));
+router.get('/rep', controller.getRepDashboard.bind(controller));
+router.get('/availability/today', controller.getTodayAvailability.bind(controller));
+router.put('/availability/today', controller.setTodayAvailability.bind(controller));
 
 export default router;

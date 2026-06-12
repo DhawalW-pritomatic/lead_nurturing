@@ -36,6 +36,8 @@ import notificationRoutes from './modules/notifications/routes';
 import schedulerRoutes from './modules/scheduler/routes';
 import bulkImportRoutes from './modules/bulk-import/routes';
 import adminRoutes from './modules/admin/routes';
+import taskRoutes from './modules/tasks/routes';
+import attendanceRoutes from './modules/attendance/routes';
 
 // Import cron jobs
 import { initCronJobs } from './cron';
@@ -91,6 +93,8 @@ app.use('/api/notifications', userRateLimiter, notificationRoutes);
 app.use('/api/scheduler', userRateLimiter, schedulerRoutes);
 app.use('/api/bulk-import', userRateLimiter, bulkImportRateLimiter, bulkImportRoutes);
 app.use('/api/admin', userRateLimiter, adminRoutes);
+app.use('/api/tasks', userRateLimiter, taskRoutes);
+app.use('/api/attendance', userRateLimiter, attendanceRoutes);
 
 // Tracking routes (public - no /api prefix for pixel/click URLs embedded in emails)
 app.use('/track', trackingRoutes);

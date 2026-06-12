@@ -1,6 +1,6 @@
 import { Response } from 'express';
 import { AuthRequest } from '../../../middleware/auth';
-import { Lead, EngagementEvent, OutreachRecord, User, SequenceEnrollment, LeadQuery } from '../../../database/models';
+import { Lead, EngagementEvent, OutreachRecord, User, SequenceEnrollment, LeadQuery, RepAvailability } from '../../../database/models';
 import { Op } from 'sequelize';
 import sequelize from '../../../config/database';
 
@@ -188,6 +188,100 @@ export class DashboardController {
       );
 
       res.json(leaderboard.sort((a, b) => b.converted - a.converted));
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  }
+
+  async getRepDashboard(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      const userId = req.user!.id;
+      const tenantId = req.user!.tenant_id;
+
+      const todayStart = new Date();
+      todayStart.setHours(0, 0, 0, 0);
+
+      const [total, hot, warm, cold, converted, stale, todaysOutreach] = await Promise.all([
+        Lead.count({ where: { assigned_rep_id: userId, tenant_id: tenantId } }),
+        Lead.count({ where: { assigned_rep_id: userId, tenant_id: tenantId, lead_type: 'HOT' } }),
+        Lead.count({ where: { assigned_rep_id: userId, tenant_id: tenantId, lead_type: 'WARM' } }),
+        Lead.count({ where: { assigned_rep_id: userId, tenant_id: tenantId, lead_type: 'COLD' } }),
+        Lead.count({ where: { assigned_rep_id: userId, tenant_id: tenantId, lead_type: 'CONVERTED' } }),
+        Lead.count({ where: { assigned_rep_id: userId, tenant_id: tenantId, lead_type: 'STALE' } }),
+        OutreachRecord.count({ where: { tenant_id: tenantId, rep_id: userId, created_at: { [Op.gte]: todayStart } } }),
+      ]);
+
+      const hotLeads = await Lead.findAll({
+        where: { assigned_rep_id: userId, tenant_id: tenantId, lead_type: 'HOT' },
+        order: [['score', 'DESC']],
+        limit: 6,
+      });
+
+      const recentActivity = await EngagementEvent.findAll({
+        include: [{
+          model: Lead,
+          as: 'lead',
+          where: { assigned_rep_id: userId, tenant_id: tenantId },
+          attributes: ['id', 'first_name', 'last_name'],
+        }],
+        order: [['created_at', 'DESC']],
+        limit: 10,
+      });
+
+      const pipeline = await Lead.findAll({
+        where: { assigned_rep_id: userId, tenant_id: tenantId },
+        attributes: ['status', [sequelize.fn('COUNT', sequelize.col('id')), 'count']],
+        group: ['status'],
+        raw: true,
+      });
+
+      res.json({
+        stats: { total, hot, warm, cold, converted, stale, todays_outreach: todaysOutreach },
+        hot_leads: hotLeads,
+        recent_activity: recentActivity,
+        pipeline,
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  }
+
+  async getTodayAvailability(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      const record = await RepAvailability.findOne({
+        where: { user_id: req.user!.id, date: today, tenant_id: req.user!.tenant_id },
+      });
+      res.json(record || { status: 'available', date: today, id: null });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  }
+
+  async setTodayAvailability(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      const { status, notes } = req.body;
+
+      const existing = await RepAvailability.findOne({
+        where: { user_id: req.user!.id, date: today, tenant_id: req.user!.tenant_id },
+      });
+
+      let record;
+      if (existing) {
+        await existing.update({ status, notes: notes || null });
+        record = existing;
+      } else {
+        record = await RepAvailability.create({
+          tenant_id: req.user!.tenant_id,
+          user_id: req.user!.id,
+          date: today,
+          status,
+          notes: notes || undefined,
+        });
+      }
+
+      res.json(record);
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }

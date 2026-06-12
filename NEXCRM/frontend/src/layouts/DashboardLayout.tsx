@@ -19,20 +19,26 @@ import {
   Bell,
   BookOpen,
   Shield,
+  CheckSquare,
+  CalendarCheck,
 } from "lucide-react";
+
+const ADMIN_ROLES = ["super_admin", "tenant_admin", "sales_manager"];
 
 const navItems = [
   { to: "/", icon: LayoutDashboard, label: "Dashboard", end: true },
   { to: "/leads", icon: Target, label: "Leads" },
+  { to: "/tasks", icon: CheckSquare, label: "Tasks" },
+  { to: "/attendance", icon: CalendarCheck, label: "Attendance" },
   { to: "/outreach", icon: Mail, label: "Outreach" },
   { to: "/scheduler", icon: Clock, label: "Scheduler" },
   { to: "/templates", icon: FileText, label: "Templates" },
   { to: "/sequences", icon: Zap, label: "Sequences" },
   { to: "/bulk-import", icon: Upload, label: "Bulk Import" },
-  { to: "/routing", icon: GitBranch, label: "Routing" },
+  { to: "/routing", icon: GitBranch, label: "Routing", allowedRoles: ADMIN_ROLES },
   { to: "/assets", icon: FolderOpen, label: "Assets" },
   { to: "/notifications", icon: Bell, label: "Notifications" },
-  { to: "/users", icon: Users, label: "Users" },
+  { to: "/users", icon: Users, label: "Users", allowedRoles: ADMIN_ROLES },
   { to: "/guidelines", icon: BookOpen, label: "Guidelines" },
   { to: "/settings", icon: Settings, label: "Settings" },
 ];
@@ -73,7 +79,7 @@ export default function DashboardLayout() {
         </div>
         <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
           {/* Regular navigation - visible for all users */}
-          {navItems.map((item) => (
+          {navItems.filter((item) => !item.allowedRoles || item.allowedRoles.includes(user?.role ?? "")).map((item) => (
             <NavLink
               key={item.to}
               to={item.to}

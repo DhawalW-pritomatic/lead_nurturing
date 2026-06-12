@@ -130,11 +130,14 @@ export class OutreachService {
     return this.sendEmail(tenantId, leadId, template.id, lead.assigned_rep_id || lead.enrolled_by);
   }
 
-  async getOutreachHistory(tenantId: string, query: any, role: string = ''): Promise<any> {
+  async getOutreachHistory(tenantId: string, query: any, role: string = '', userId?: string): Promise<any> {
     const { page = 1, limit = 50, lead_id, status, channel } = query;
     const where: any = {};
     if (role !== 'super_admin') {
       where.tenant_id = tenantId;
+    }
+    if (['sales_rep', 'senior_sales_rep'].includes(role) && userId) {
+      where.rep_id = userId;
     }
     if (lead_id) where.lead_id = lead_id;
     if (status) where.status = status;
@@ -160,10 +163,13 @@ export class OutreachService {
     return { records: rows, total: count, page: parseInt(page), limit: parseInt(limit) };
   }
 
-  async getOutreachStats(tenantId: string, role: string = ''): Promise<any> {
+  async getOutreachStats(tenantId: string, role: string = '', userId?: string): Promise<any> {
     const base: any = {};
     if (role !== 'super_admin') {
       base.tenant_id = tenantId;
+    }
+    if (['sales_rep', 'senior_sales_rep'].includes(role) && userId) {
+      base.rep_id = userId;
     }
     const [total, sent, opened, clicked, failed] = await Promise.all([
       OutreachRecord.count({ where: { ...base } }),

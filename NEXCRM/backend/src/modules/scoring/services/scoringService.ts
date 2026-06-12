@@ -1,6 +1,9 @@
 import { Lead, ScoringProfile, EngagementEvent } from '../../../database/models';
 import { Op } from 'sequelize';
 import sequelize from '../../../config/database';
+import { TaskService } from '../../tasks/services/taskService';
+
+const taskService = new TaskService();
 
 export class ScoringService {
   private defaultWeights: Record<string, number> = {
@@ -62,6 +65,13 @@ export class ScoringService {
     }
 
     await Lead.update(updateData, { where: { id: leadId, tenant_id: tenantId } });
+
+    // Auto-create a call task the first time a lead crosses the HOT threshold
+    if (newType === 'HOT' && lead.lead_type !== 'HOT') {
+      taskService.autoCreateForHotLead(tenantId, lead).catch(e =>
+        console.error('[AutoTask] HOT lead task failed:', e)
+      );
+    }
   }
 
   async applyScoreDecay(tenantId: string): Promise<number> {
@@ -82,6 +92,10 @@ export class ScoringService {
       await Lead.update(
         { score: Math.max(0, lead.score - 30), lead_type: 'STALE', status: 'STALE' },
         { where: { id: lead.id } }
+      );
+      // Auto-create a re-engagement task for each newly stale lead
+      taskService.autoCreateForStaleLead(tenantId, lead).catch(e =>
+        console.error('[AutoTask] STALE lead task failed:', e)
       );
     }
 
