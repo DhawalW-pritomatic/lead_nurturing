@@ -19,7 +19,7 @@ import { config } from '../../../config';
 export class GmailPollerService {
   private isRunning = false;
   private readonly maxUnseenScan = parseInt(process.env.IMAP_MAX_UNSEEN_SCAN || '500', 10);
-  private readonly maxImportPerTick = parseInt(process.env.IMAP_MAX_IMPORT_PER_TICK || '50', 10);
+  private readonly maxImportPerTick = parseInt(process.env.IMAP_MAX_IMPORT_PER_TICK || '10', 10);
   private readonly includeRecentSeen = (process.env.IMAP_INCLUDE_RECENT_SEEN || 'true').toLowerCase() === 'true';
   private readonly seenLookbackHours = parseInt(process.env.IMAP_SEEN_LOOKBACK_HOURS || '720', 10);
   private readonly maxSeenScan = parseInt(process.env.IMAP_MAX_SEEN_SCAN || '1500', 10);
@@ -36,8 +36,8 @@ export class GmailPollerService {
         pass: process.env.IMAP_PASS || config.smtp.pass,
       },
       logger: false,
-      socketTimeout: 30000,
-      connectionTimeout: 15000,
+      socketTimeout: 90000,
+      connectionTimeout: 30000,
     } as const;
   }
 
@@ -102,13 +102,16 @@ export class GmailPollerService {
           if (mid) existingMsgIds.add(String(mid));
         }
 
+        console.log(`[GmailPoller] Connected. Known leads: ${leadByEmail.size}, existing UIDs: ${existingUids.size}, existing msgIds: ${existingMsgIds.size}`);
+
         // Stage 1: quickly scan envelopes only (no body parse)
         const candidateUids: number[] = [];
         const candidateUidSet = new Set<number>();
 
         const collectCandidates = async (
           criteria: any,
-          maxScan: number
+          maxScan: number,
+          label: string
         ): Promise<void> => {
           const envelopeScan = client.fetch(criteria, {
             uid: true,
@@ -122,12 +125,14 @@ export class GmailPollerService {
             scanned++;
 
             const uid = Number((msg as any).uid);
+            const fromAddress = msg.envelope?.from?.[0]?.address?.toLowerCase().trim() || '';
+            console.log(`[GmailPoller] ${label} uid=${uid} from=${fromAddress || '(empty)'} alreadyImported=${existingUids.has(String(uid))} knownLead=${leadByEmail.has(fromAddress)}`);
+
             if (!uid || candidateUidSet.has(uid) || existingUids.has(String(uid))) {
               skipped++;
               continue;
             }
 
-            const fromAddress = msg.envelope?.from?.[0]?.address?.toLowerCase().trim() || '';
             if (!fromAddress || !leadByEmail.has(fromAddress)) {
               skipped++;
               continue;
@@ -136,16 +141,19 @@ export class GmailPollerService {
             candidateUidSet.add(uid);
             candidateUids.push(uid);
           }
+          console.log(`[GmailPoller] ${label} scan done — scanned: ${scanned}, candidates so far: ${candidateUids.length}`);
         };
 
-        // Always scan unseen first
-        await collectCandidates({ seen: false }, unseenScanLimit);
+        // Only scan unseen emails from the last 30 days — avoids trawling through
+        // hundreds of old unread newsletters before reaching recent lead replies.
+        const unseenSince = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+        await collectCandidates({ seen: false, since: unseenSince }, unseenScanLimit, 'UNSEEN');
 
         // Also scan recently seen emails to backfill missed replies
         if (this.includeRecentSeen && candidateUids.length < importLimit) {
           const lookback = allMailBackfill ? (backfillHours || this.seenLookbackHours) : this.seenLookbackHours;
           const since = new Date(Date.now() - lookback * 60 * 60 * 1000);
-          await collectCandidates({ seen: true, since }, seenScanLimit);
+          await collectCandidates({ seen: true, since }, seenScanLimit, 'SEEN');
         }
 
         if (candidateUids.length === 0) {
@@ -211,7 +219,7 @@ export class GmailPollerService {
               '';
             const replyText = this.extractReplyOnly(rawPlain) || rawPlain.trim() || '(no body)';
 
-            // Create LeadQuery
+            // Create LeadQuery for the incoming reply
             await LeadQuery.create({
               tenant_id: lead.tenant_id,
               lead_id: lead.id,
@@ -232,35 +240,7 @@ export class GmailPollerService {
               },
             });
 
-            // If this looks like a reply to a previously sent outreach, mark one pending query as answered.
-            const refs = [
-              parsed.inReplyTo,
-              ...(Array.isArray(parsed.references) ? parsed.references : []),
-            ].filter(Boolean) as string[];
-
-            if (refs.length > 0) {
-              const pendingForLead = await LeadQuery.findOne({
-                where: {
-                  tenant_id: lead.tenant_id,
-                  lead_id: lead.id,
-                  status: 'pending',
-                },
-                order: [['created_at', 'DESC']],
-              });
-
-              if (pendingForLead) {
-                const metadata = ((pendingForLead.get('metadata') || {}) as Record<string, any>);
-                await pendingForLead.update({
-                  status: 'answered',
-                  answered_at: new Date(),
-                  metadata: {
-                    ...metadata,
-                    answered_via_imap: true,
-                    last_in_reply_to: refs[0],
-                  },
-                });
-              }
-            }
+            // Status stays 'pending' — only an admin reply via the CRM marks it 'answered'.
 
             // Mark as SEEN on Gmail so we never process it again
             if (gmailUid) {

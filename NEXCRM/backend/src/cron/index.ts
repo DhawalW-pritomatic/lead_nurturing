@@ -2,10 +2,12 @@ import cron from 'node-cron';
 import { SchedulerService } from '../modules/scheduler/services/schedulerService';
 import { GmailPollerService } from '../modules/tracking/services/gmailPollerService';
 import { SequenceAutomationService } from '../modules/sequences/services/sequenceAutomationService';
+import { CallbackService } from '../modules/callbacks/services/callbackService';
 
 const schedulerService = new SchedulerService();
 const gmailPoller = new GmailPollerService();
 const sequenceAutomation = new SequenceAutomationService();
+const callbackService = new CallbackService();
 
 /**
  * Initialize all cron jobs for the application.
@@ -61,5 +63,24 @@ export function initCronJobs(): void {
     }
   });
 
-  console.log('[CRON] Cron jobs initialized: Gmail poll every 2min, sequence steps every 10min, email scheduler 9AM + hourly 10AM-6PM Mon-Sat.');
+  // Callback reminders: check every 15 minutes for callbacks due within 1 hour
+  cron.schedule('*/15 * * * *', async () => {
+    try {
+      const sent = await callbackService.sendUpcomingReminders();
+      if (sent > 0) console.log(`[CRON] Sent ${sent} callback reminder(s).`);
+    } catch (error: any) {
+      console.error('[CRON] Callback reminder error:', error.message);
+    }
+  });
+
+  // SLA breach + missed callbacks: check hourly
+  cron.schedule('0 * * * *', async () => {
+    try {
+      await callbackService.processMissedAndSla();
+    } catch (error: any) {
+      console.error('[CRON] SLA/missed callback error:', error.message);
+    }
+  });
+
+  console.log('[CRON] Cron jobs initialized: Gmail poll every 2min, sequence steps every 10min, email scheduler 9AM + hourly 10AM-6PM Mon-Sat, callback reminders every 15min, SLA check hourly.');
 }

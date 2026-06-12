@@ -1,7 +1,8 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "../../services/api";
 import toast from "react-hot-toast";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useAuthStore } from "../../store/authStore";
 import { formatDate, formatDateTime } from "../../utils/dateUtils";
 import {
   Send,
@@ -10,21 +11,45 @@ import {
   MousePointer,
   Clock,
   MessageSquare,
+  X,
+  CornerUpRight,
 } from "lucide-react";
 
 export default function OutreachPage() {
   const queryClient = useQueryClient();
+  const token = useAuthStore((s) => s.token);
+
+  // Real-time: refresh counts the moment a tracking pixel fires on the backend.
+  // Connect directly to localhost:5000 to bypass the Vite proxy, which buffers
+  // chunked streaming responses and breaks SSE delivery.
+  useEffect(() => {
+    if (!token) return;
+    const backendUrl = "http://localhost:5000";
+    const es = new EventSource(
+      `${backendUrl}/api/outreach/events?token=${encodeURIComponent(token)}`
+    );
+    es.addEventListener("email_opened", () => {
+      queryClient.invalidateQueries({ queryKey: ["outreach"] });
+      queryClient.invalidateQueries({ queryKey: ["outreach-stats"] });
+    });
+    es.onerror = () => es.close();
+    return () => es.close();
+  }, [token, queryClient]);
+
   const [selectedLead, setSelectedLead] = useState("");
   const [selectedTemplate, setSelectedTemplate] = useState("");
   const [subject, setSubject] = useState("");
   const [queryStatusFilter, setQueryStatusFilter] = useState<
     "all" | "pending" | "answered"
   >("all");
+  const [answeringQuery, setAnsweringQuery] = useState<any>(null);
+  const [answerText, setAnswerText] = useState("");
 
   const { data: outreach = [], isLoading } = useQuery({
     queryKey: ["outreach"],
     queryFn: () =>
       api.get("/outreach/history").then((r) => r.data?.records || []),
+    refetchInterval: 30 * 1000,
   });
 
   const {
@@ -38,6 +63,7 @@ export default function OutreachPage() {
   } = useQuery({
     queryKey: ["outreach-stats"],
     queryFn: () => api.get("/outreach/stats").then((r) => r.data),
+    refetchInterval: 30 * 1000,
   });
 
   const {
@@ -95,6 +121,29 @@ export default function OutreachPage() {
     onError: () => toast.error("Failed to send email"),
   });
 
+  const answerMutation = useMutation({
+    mutationFn: ({ id, answer_text }: { id: string; answer_text: string }) =>
+      api
+        .patch(`/track/queries/${id}/answer`, { answer_text })
+        .then((r) => r.data),
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["query-history"] });
+      queryClient.invalidateQueries({ queryKey: ["query-stats"] });
+      if (data?.metadata?.email_sent === false) {
+        toast.error(
+          "Reply saved but email was NOT delivered — check your SMTP credentials in the backend .env file.",
+          { duration: 8000 }
+        );
+      } else {
+        toast.success("Reply sent and email delivered to lead!");
+      }
+      setAnsweringQuery(null);
+      setAnswerText("");
+    },
+    onError: (e: any) =>
+      toast.error(e?.response?.data?.error || "Failed to send reply"),
+  });
+
   const handleSend = () => {
     if (!selectedLead || !selectedTemplate) {
       toast.error("Select lead and template");
@@ -105,6 +154,27 @@ export default function OutreachPage() {
       template_id: selectedTemplate,
       subject: subject || undefined,
     });
+  };
+
+  const handleAnswer = () => {
+    if (!answerText.trim()) {
+      toast.error("Please enter a reply");
+      return;
+    }
+    answerMutation.mutate({
+      id: answeringQuery.id,
+      answer_text: answerText.trim(),
+    });
+  };
+
+  const openAnswerModal = (q: any) => {
+    setAnsweringQuery(q);
+    setAnswerText("");
+  };
+
+  const closeAnswerModal = () => {
+    setAnsweringQuery(null);
+    setAnswerText("");
   };
 
   return (
@@ -327,6 +397,7 @@ export default function OutreachPage() {
                   <th className="table-header">Answered By</th>
                   <th className="table-header">Created</th>
                   <th className="table-header">Answered At</th>
+                  <th className="table-header">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
@@ -366,6 +437,18 @@ export default function OutreachPage() {
                             ? "Answered (text not captured)"
                             : "-")}
                       </div>
+                      {q.status === "answered" &&
+                        q.metadata?.email_sent === false && (
+                          <span className="mt-1 inline-block text-xs text-red-600 bg-red-50 px-2 py-0.5 rounded">
+                            Email not delivered — check SMTP config
+                          </span>
+                        )}
+                      {q.status === "answered" &&
+                        q.metadata?.email_sent === true && (
+                          <span className="mt-1 inline-block text-xs text-green-600 bg-green-50 px-2 py-0.5 rounded">
+                            Email delivered
+                          </span>
+                        )}
                     </td>
                     <td className="table-cell">
                       {q.owner
@@ -383,6 +466,18 @@ export default function OutreachPage() {
                     <td className="table-cell text-sm text-gray-500">
                       {formatDateTime(q.answered_at || q.answeredAt)}
                     </td>
+                    <td className="table-cell">
+                      {q.status === "pending" ? (
+                        <button
+                          onClick={() => openAnswerModal(q)}
+                          className="flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-800 font-medium whitespace-nowrap"
+                        >
+                          <CornerUpRight className="w-3.5 h-3.5" /> Reply
+                        </button>
+                      ) : (
+                        <span className="text-xs text-gray-400">—</span>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -395,6 +490,77 @@ export default function OutreachPage() {
           </div>
         )}
       </div>
+
+      {/* Reply Modal */}
+      {answeringQuery && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-lg p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-semibold text-gray-900">Reply to Lead</h3>
+              <button
+                onClick={closeAnswerModal}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="mb-4 space-y-1 text-sm text-gray-600">
+              <p>
+                <span className="font-medium">Lead:</span>{" "}
+                {answeringQuery.lead?.first_name} {answeringQuery.lead?.last_name}{" "}
+                <span className="text-gray-400">
+                  ({answeringQuery.lead?.email})
+                </span>
+              </p>
+              <p>
+                <span className="font-medium">Subject:</span>{" "}
+                {answeringQuery.subject || "(no subject)"}
+              </p>
+            </div>
+
+            <div className="mb-4">
+              <p className="text-sm font-medium text-gray-700 mb-1">
+                Lead's message
+              </p>
+              <div className="bg-gray-50 rounded p-3 text-sm text-gray-700 whitespace-pre-wrap max-h-32 overflow-y-auto border border-gray-200">
+                {answeringQuery.metadata?.lead_reply_text ||
+                  answeringQuery.metadata?.raw_inbound_text ||
+                  answeringQuery.body ||
+                  "—"}
+              </div>
+            </div>
+
+            <div className="mb-4">
+              <label className="text-sm font-medium text-gray-700 block mb-1">
+                Your Reply
+              </label>
+              <textarea
+                value={answerText}
+                onChange={(e) => setAnswerText(e.target.value)}
+                rows={5}
+                className="input-field w-full"
+                placeholder="Type your reply to the lead..."
+                autoFocus
+              />
+            </div>
+
+            <div className="flex justify-end gap-3">
+              <button onClick={closeAnswerModal} className="btn-secondary">
+                Cancel
+              </button>
+              <button
+                onClick={handleAnswer}
+                disabled={answerMutation.isPending}
+                className="btn-primary flex items-center gap-2"
+              >
+                <Send className="w-4 h-4" />
+                {answerMutation.isPending ? "Sending..." : "Send Reply"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

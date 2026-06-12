@@ -17,6 +17,12 @@ import NurturingSettings from './NurturingSettings';
 import Notification from './Notification';
 import EmailSchedule from './EmailSchedule';
 import LeadQuery from './LeadQuery';
+import TenantPhoneConfig from './TenantPhoneConfig';
+import CallRecord from './CallRecord';
+import CallbackSchedule from './CallbackSchedule';
+import Task from './Task';
+import WhatsAppMessage from './WhatsAppMessage';
+import Meeting from './Meeting';
 
 // Tenant associations
 Tenant.hasMany(User, { foreignKey: 'tenant_id', as: 'users' });
@@ -28,6 +34,7 @@ Tenant.hasMany(RoutingRule, { foreignKey: 'tenant_id', as: 'routingRules' });
 Tenant.hasMany(ScoringProfile, { foreignKey: 'tenant_id', as: 'scoringProfiles' });
 Tenant.hasMany(AssetProject, { foreignKey: 'tenant_id', as: 'assetProjects' });
 Tenant.hasOne(NurturingSettings, { foreignKey: 'tenant_id', as: 'nurturingSettings' });
+Tenant.hasOne(TenantPhoneConfig, { foreignKey: 'tenant_id', as: 'phoneConfig' });
 
 // User associations
 User.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
@@ -43,6 +50,10 @@ Lead.hasMany(EngagementEvent, { foreignKey: 'lead_id', as: 'engagementEvents' })
 Lead.hasMany(OutreachRecord, { foreignKey: 'lead_id', as: 'outreachRecords' });
 Lead.hasMany(SequenceEnrollment, { foreignKey: 'lead_id', as: 'sequenceEnrollments' });
 Lead.hasMany(LeadQuery, { foreignKey: 'lead_id', as: 'queries' });
+Lead.hasMany(CallRecord, { foreignKey: 'lead_id', as: 'callRecords' });
+Lead.hasMany(CallbackSchedule, { foreignKey: 'lead_id', as: 'callbackSchedules' });
+Lead.hasMany(WhatsAppMessage, { foreignKey: 'lead_id', as: 'whatsappMessages' });
+Lead.hasMany(Task, { foreignKey: 'lead_id', as: 'tasks' });
 
 // ApplicationType
 ApplicationType.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
@@ -117,6 +128,36 @@ RoutingRule.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
 AuditLog.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
 AuditLog.belongsTo(User, { foreignKey: 'actor_id', as: 'actor' });
 
+// TenantPhoneConfig
+TenantPhoneConfig.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
+
+// CallRecord
+CallRecord.belongsTo(Lead, { foreignKey: 'lead_id', as: 'lead' });
+CallRecord.belongsTo(User, { foreignKey: 'rep_id', as: 'rep' });
+CallRecord.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
+CallRecord.hasMany(CallbackSchedule, { foreignKey: 'call_record_id', as: 'callbacks' });
+
+// CallbackSchedule
+CallbackSchedule.belongsTo(Lead, { foreignKey: 'lead_id', as: 'lead' });
+CallbackSchedule.belongsTo(User, { foreignKey: 'rep_id', as: 'rep' });
+CallbackSchedule.belongsTo(CallRecord, { foreignKey: 'call_record_id', as: 'callRecord' });
+
+// Task
+Task.belongsTo(Lead, { foreignKey: 'lead_id', as: 'lead' });
+Task.belongsTo(User, { foreignKey: 'assigned_to', as: 'assignee' });
+Task.belongsTo(User, { foreignKey: 'created_by', as: 'creator' });
+
+// WhatsAppMessage
+WhatsAppMessage.belongsTo(Lead, { foreignKey: 'lead_id', as: 'lead' });
+WhatsAppMessage.belongsTo(User, { foreignKey: 'rep_id', as: 'rep' });
+
+// Meeting
+Meeting.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
+Meeting.belongsTo(Lead, { foreignKey: 'lead_id', as: 'lead' });
+Meeting.belongsTo(User, { foreignKey: 'assigned_to', as: 'assignedRep' });
+Meeting.belongsTo(User, { foreignKey: 'created_by', as: 'creator' });
+Lead.hasMany(Meeting, { foreignKey: 'lead_id', as: 'meetings' });
+
 export {
   Tenant,
   User,
@@ -137,4 +178,10 @@ export {
   Notification,
   EmailSchedule,
   LeadQuery,
+  TenantPhoneConfig,
+  CallRecord,
+  CallbackSchedule,
+  Task,
+  WhatsAppMessage,
+  Meeting,
 };

@@ -403,9 +403,11 @@ export class SequenceService {
         break;
 
       case 'status_change':
-        // This would require tracking status changes - implement based on your needs
-        // For now, skip
-        return 0;
+        // Catch leads whose lead_type was recently updated (within last 2 hours).
+        // The cron runs every 15 min so this window safely covers any temperature change.
+        where.updated_at = { [Op.gte]: new Date(Date.now() - 2 * 60 * 60 * 1000) };
+        leads = await Lead.findAll({ where });
+        break;
 
       case 'score_threshold':
         // Enroll leads above certain score

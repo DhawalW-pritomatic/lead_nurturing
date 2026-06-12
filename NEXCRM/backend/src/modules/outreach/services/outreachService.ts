@@ -1,4 +1,5 @@
 import nodemailer from 'nodemailer';
+import { Op } from 'sequelize';
 import { config } from '../../../config';
 import { Lead, Template, OutreachRecord, User, Tenant } from '../../../database/models';
 import { AppError } from '../../../middleware/errorHandler';
@@ -69,9 +70,9 @@ export class OutreachService {
       body = body.replace(regex, value);
     }
 
-    // Add tracking pixel
+    // Add tracking pixel — must NOT use display:none; Gmail's proxy skips hidden images
     const pixelUrl = `${config.baseUrl}/track/open/${trackingId}`;
-    body += `<img src="${pixelUrl}" width="1" height="1" style="display:none" />`;
+    body += `<img src="${pixelUrl}" width="1" height="1" border="0" style="width:1px;height:1px;border:0;margin:0;padding:0;" />`;
 
     // Add unsubscribe link
     const unsubUrl = `${config.baseUrl}/track/unsubscribe/${leadId}?tenant=${tenantId}`;
@@ -94,8 +95,12 @@ export class OutreachService {
     });
 
     try {
+      const fromName = (config.smtp.from.match(/^([^<]+)/) || [''])[0].trim().replace(/^["']|["']$/g, '');
+      const fromAddress = config.smtp.user || config.smtp.from;
+      const from = fromName && config.smtp.user ? `${fromName} <${config.smtp.user}>` : fromAddress;
+
       await this.transporter.sendMail({
-        from: config.smtp.from,
+        from,
         to: lead.email,
         subject,
         html: body,
@@ -168,7 +173,8 @@ export class OutreachService {
     const [total, sent, opened, clicked, failed] = await Promise.all([
       OutreachRecord.count({ where: { ...base } }),
       OutreachRecord.count({ where: { ...base, status: 'sent' } }),
-      OutreachRecord.count({ where: { ...base, status: 'opened' } }),
+      // opened_at being set means the email was opened, regardless of whether they also clicked
+      OutreachRecord.count({ where: { ...base, opened_at: { [Op.ne]: null } } }),
       OutreachRecord.count({ where: { ...base, status: 'clicked' } }),
       OutreachRecord.count({ where: { ...base, status: 'failed' } }),
     ]);
@@ -179,8 +185,8 @@ export class OutreachService {
       opened,
       clicked,
       failed,
-      open_rate: sent > 0 ? ((opened / sent) * 100).toFixed(1) : '0',
-      click_rate: sent > 0 ? ((clicked / sent) * 100).toFixed(1) : '0',
+      open_rate: total > 0 ? ((opened / total) * 100).toFixed(1) : '0',
+      click_rate: total > 0 ? ((clicked / total) * 100).toFixed(1) : '0',
     };
   }
 }

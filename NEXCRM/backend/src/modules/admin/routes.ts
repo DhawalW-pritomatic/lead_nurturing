@@ -32,4 +32,7 @@ router.get('/tenants/:tenantId/leads', controller.getTenantLeads.bind(controller
 // System health
 router.get('/system/health', controller.getSystemHealth.bind(controller));
 
+// Manual Gmail poll trigger (debug)
+router.post('/gmail/poll', controller.triggerGmailPoll.bind(controller));
+
 export default router;
