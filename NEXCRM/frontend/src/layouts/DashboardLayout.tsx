@@ -1,7 +1,9 @@
 import { Outlet, NavLink, useNavigate } from "react-router-dom";
+import { useState } from "react";
 import { useAuthStore } from "../store/authStore";
 import { useQuery } from "@tanstack/react-query";
 import api from "../services/api";
+import ProfileDrawer from "../components/ProfileDrawer";
 import {
   LayoutDashboard,
   Users,
@@ -44,6 +46,7 @@ const adminNavItems = [
 export default function DashboardLayout() {
   const { user, logout } = useAuthStore();
   const navigate = useNavigate();
+  const [showProfile, setShowProfile] = useState(false);
 
   const { data: unreadData } = useQuery({
     queryKey: ["notifications-unread"],
@@ -118,7 +121,7 @@ export default function DashboardLayout() {
         </nav>
         <div className="p-4 border-t border-gray-200">
           <button
-            onClick={() => navigate("/profile")}
+            onClick={() => setShowProfile(true)}
             className="flex items-center gap-3 mb-3 w-full p-2 rounded-lg hover:bg-brand-50 transition-colors group"
           >
             <div className="w-9 h-9 bg-brand-100 rounded-full flex items-center justify-center group-hover:bg-brand-200 transition-colors">
@@ -149,6 +152,8 @@ export default function DashboardLayout() {
           <Outlet />
         </div>
       </main>
+
+      <ProfileDrawer isOpen={showProfile} onClose={() => setShowProfile(false)} />
     </div>
   );
 }
