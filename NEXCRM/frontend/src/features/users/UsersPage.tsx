@@ -2,7 +2,8 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "../../services/api";
 import toast from "react-hot-toast";
-import { UserPlus, Edit2, Ban, CheckCircle } from "lucide-react";
+import Modal from "../../components/Modal";
+import { UserPlus, Edit2, Ban, CheckCircle, Save } from "lucide-react";
 import { useAuthStore } from "../../store/authStore";
 
 export default function UsersPage() {
@@ -39,12 +40,16 @@ export default function UsersPage() {
     queryFn: () => api.get("/users/performance").then((r) => r.data),
   });
 
+  const resetCreateForm = () =>
+    setForm({ first_name: "", last_name: "", email: "", role: "sales_rep", phone: "", territory: "", password: "Welcome@123" });
+
   const createMutation = useMutation({
     mutationFn: (data: any) => api.post("/users", data).then((r) => r.data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["users"] });
       toast.success("User created.");
       setShowCreate(false);
+      resetCreateForm();
     },
     onError: (err: any) => toast.error(err.response?.data?.error || "Failed"),
   });
@@ -114,31 +119,47 @@ export default function UsersPage() {
         </button>
       </div>
 
-      {showCreate && (
-        <div className="card space-y-4">
-          <h3 className="font-semibold">Add New User</h3>
-          <div className="grid grid-cols-3 gap-4">
+      {/* Add User Modal */}
+      <Modal
+        isOpen={showCreate}
+        onClose={() => { setShowCreate(false); resetCreateForm(); }}
+        title="Add New User"
+        size="md"
+      >
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">First Name</label>
+              <input
+                placeholder="John"
+                value={form.first_name}
+                onChange={(e) => setForm({ ...form, first_name: e.target.value })}
+                className="input-field"
+                autoFocus
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Last Name</label>
+              <input
+                placeholder="Doe"
+                value={form.last_name}
+                onChange={(e) => setForm({ ...form, last_name: e.target.value })}
+                className="input-field"
+              />
+            </div>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Email</label>
             <input
-              placeholder="First name"
-              value={form.first_name}
-              onChange={(e) => setForm({ ...form, first_name: e.target.value })}
-              className="input-field"
-            />
-            <input
-              placeholder="Last name"
-              value={form.last_name}
-              onChange={(e) => setForm({ ...form, last_name: e.target.value })}
-              className="input-field"
-            />
-            <input
-              placeholder="Email"
+              placeholder="john@company.com"
               type="email"
               value={form.email}
               onChange={(e) => setForm({ ...form, email: e.target.value })}
               className="input-field"
             />
           </div>
-          <div className="grid grid-cols-3 gap-4">
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Role</label>
             <select
               value={form.role}
               onChange={(e) => setForm({ ...form, role: e.target.value })}
@@ -149,61 +170,83 @@ export default function UsersPage() {
               <option value="sales_manager">Sales Manager</option>
               <option value="tenant_admin">Tenant Admin</option>
             </select>
-            <input
-              placeholder="Phone"
-              value={form.phone}
-              onChange={(e) => setForm({ ...form, phone: e.target.value })}
-              className="input-field"
-            />
-            <input
-              placeholder="Territory"
-              value={form.territory}
-              onChange={(e) => setForm({ ...form, territory: e.target.value })}
-              className="input-field"
-            />
           </div>
-          <div className="flex gap-3">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Phone <span className="text-gray-400">(optional)</span></label>
+              <input
+                placeholder="+1 (555) 123-4567"
+                value={form.phone}
+                onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                className="input-field"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Territory <span className="text-gray-400">(optional)</span></label>
+              <input
+                placeholder="e.g. North Region"
+                value={form.territory}
+                onChange={(e) => setForm({ ...form, territory: e.target.value })}
+                className="input-field"
+              />
+            </div>
+          </div>
+          <div className="p-3 bg-amber-50 border border-amber-100 rounded-lg text-xs text-amber-700">
+            Default password: <span className="font-mono font-semibold">Welcome@123</span> — user should change on first login.
+          </div>
+          <div className="flex gap-3 pt-1">
             <button
               onClick={() => createMutation.mutate(form)}
-              className="btn-primary"
+              disabled={!form.first_name.trim() || !form.email.trim() || createMutation.isPending}
+              className="btn-primary flex items-center gap-2 disabled:opacity-50"
             >
-              Create User
+              <UserPlus className="w-4 h-4" />
+              {createMutation.isPending ? "Creating…" : "Create User"}
             </button>
-            <button
-              onClick={() => setShowCreate(false)}
-              className="btn-secondary"
-            >
+            <button onClick={() => { setShowCreate(false); resetCreateForm(); }} className="btn-secondary">
               Cancel
             </button>
           </div>
         </div>
-      )}
+      </Modal>
 
-      {editUser && (
-        <div className="card space-y-4">
-          <h3 className="font-semibold">Edit User — {editUser.first_name} {editUser.last_name}</h3>
-          <div className="grid grid-cols-3 gap-4">
+      {/* Edit User Modal */}
+      <Modal
+        isOpen={!!editUser}
+        onClose={() => setEditUser(null)}
+        title={editUser ? `Edit — ${editUser.first_name} ${editUser.last_name}` : "Edit User"}
+        size="md"
+      >
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">First Name</label>
+              <input
+                value={editForm.first_name}
+                onChange={(e) => setEditForm({ ...editForm, first_name: e.target.value })}
+                className="input-field"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Last Name</label>
+              <input
+                value={editForm.last_name}
+                onChange={(e) => setEditForm({ ...editForm, last_name: e.target.value })}
+                className="input-field"
+              />
+            </div>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Email</label>
             <input
-              placeholder="First name"
-              value={editForm.first_name}
-              onChange={(e) => setEditForm({ ...editForm, first_name: e.target.value })}
-              className="input-field"
-            />
-            <input
-              placeholder="Last name"
-              value={editForm.last_name}
-              onChange={(e) => setEditForm({ ...editForm, last_name: e.target.value })}
-              className="input-field"
-            />
-            <input
-              placeholder="Email"
               type="email"
               value={editForm.email}
               onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
               className="input-field"
             />
           </div>
-          <div className="grid grid-cols-3 gap-4">
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Role</label>
             <select
               value={editForm.role}
               onChange={(e) => setEditForm({ ...editForm, role: e.target.value })}
@@ -214,32 +257,42 @@ export default function UsersPage() {
               <option value="sales_manager">Sales Manager</option>
               <option value="tenant_admin">Tenant Admin</option>
             </select>
-            <input
-              placeholder="Phone"
-              value={editForm.phone}
-              onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
-              className="input-field"
-            />
-            <input
-              placeholder="Territory"
-              value={editForm.territory}
-              onChange={(e) => setEditForm({ ...editForm, territory: e.target.value })}
-              className="input-field"
-            />
           </div>
-          <div className="flex gap-3">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Phone</label>
+              <input
+                value={editForm.phone}
+                onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
+                className="input-field"
+                placeholder="+1 (555) 123-4567"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Territory</label>
+              <input
+                value={editForm.territory}
+                onChange={(e) => setEditForm({ ...editForm, territory: e.target.value })}
+                className="input-field"
+                placeholder="e.g. North Region"
+              />
+            </div>
+          </div>
+          <div className="flex gap-3 pt-1">
             <button
-              onClick={() => updateMutation.mutate({ id: editUser.id, data: editForm })}
-              className="btn-primary"
+              onClick={() => updateMutation.mutate({ id: editUser?.id, data: editForm })}
+              disabled={updateMutation.isPending}
+              className="btn-primary flex items-center gap-2 disabled:opacity-50"
             >
-              Save Changes
+              <Save className="w-4 h-4" />
+              {updateMutation.isPending ? "Saving…" : "Save Changes"}
             </button>
             <button onClick={() => setEditUser(null)} className="btn-secondary">
               Cancel
             </button>
           </div>
         </div>
-      )}
+      </Modal>
 
       {/* User list */}
       <div className="card">

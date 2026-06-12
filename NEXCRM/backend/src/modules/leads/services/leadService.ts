@@ -45,7 +45,7 @@ export class LeadService {
   }
 
   async getLeads(tenantId: string, userId: string, role: string, query: any): Promise<any> {
-    const { page = 1, limit = 50, search, status, lead_type, source, application_type_id, assigned_rep_id, sort_by = 'created_at', sort_order = 'DESC', score_min, score_max } = query;
+    const { page = 1, limit = 50, search, status, lead_type, source, application_type_id, assigned_rep_id, sort_by, sort_order = 'DESC', score_min, score_max } = query;
 
     // Super_admin: cross-tenant visibility. All other roles: scoped to their tenant.
     const where: any = {};
@@ -94,10 +94,20 @@ export class LeadService {
       includes.push({ model: Tenant, as: 'tenant', attributes: ['id', 'name'] });
     }
 
+    // Default order: HOT → WARM → COLD → STALE → others, then by score desc, then newest first.
+    // A custom sort_by overrides this.
+    const orderClause: any[] = sort_by
+      ? [[sort_by, sort_order.toUpperCase()]]
+      : [
+          [sequelize.literal(`CASE lead_type WHEN 'HOT' THEN 1 WHEN 'WARM' THEN 2 WHEN 'COLD' THEN 3 WHEN 'STALE' THEN 4 WHEN 'CONVERTED' THEN 5 ELSE 6 END`), 'ASC'],
+          ['score', 'DESC'],
+          ['created_at', 'DESC'],
+        ];
+
     const { rows, count } = await Lead.findAndCountAll({
       where,
       include: includes,
-      order: [[sort_by, sort_order.toUpperCase()]],
+      order: orderClause,
       limit: parseInt(limit as string),
       offset,
     });

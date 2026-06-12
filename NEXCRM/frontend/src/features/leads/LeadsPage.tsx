@@ -30,15 +30,21 @@ export default function LeadsPage() {
   });
 
   const leadTypeBadge = (type: string) => {
-    const classes: Record<string, string> = {
-      HOT: "badge-hot",
-      WARM: "badge-warm",
-      COLD: "badge-cold",
-      STALE: "badge-stale",
-      CONVERTED: "badge-converted",
-      LOST: "bg-red-50 text-red-700 px-2.5 py-0.5 rounded-full text-xs font-medium",
+    const cfg: Record<string, { bg: string; text: string; dot: string }> = {
+      HOT:       { bg: "bg-red-100",   text: "text-red-700",   dot: "bg-red-500"   },
+      WARM:      { bg: "bg-amber-100", text: "text-amber-700", dot: "bg-amber-400" },
+      COLD:      { bg: "bg-blue-100",  text: "text-blue-700",  dot: "bg-blue-400"  },
+      STALE:     { bg: "bg-gray-100",  text: "text-gray-600",  dot: "bg-gray-400"  },
+      CONVERTED: { bg: "bg-green-100", text: "text-green-700", dot: "bg-green-500" },
+      LOST:      { bg: "bg-red-50",    text: "text-red-600",   dot: "bg-red-400"   },
     };
-    return <span className={classes[type] || "badge-cold"}>{type}</span>;
+    const c = cfg[type] || cfg.COLD;
+    return (
+      <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold ${c.bg} ${c.text}`}>
+        <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${c.dot}`} />
+        {type}
+      </span>
+    );
   };
 
   const statusBadge = (status: string) => {
@@ -73,6 +79,31 @@ export default function LeadsPage() {
           </p>
         </div>
         <div className="flex items-center gap-3">
+          {/* Quick lead-type filter circles */}
+          {[
+            { type: "HOT",   bg: "bg-red-500",   ring: "ring-red-400",   label: "Hot"   },
+            { type: "WARM",  bg: "bg-amber-400",  ring: "ring-amber-400",  label: "Warm"  },
+            { type: "COLD",  bg: "bg-blue-400",   ring: "ring-blue-400",   label: "Cold"  },
+            { type: "STALE", bg: "bg-gray-400",   ring: "ring-gray-400",   label: "Stale" },
+          ].map(({ type, bg, ring, label }) => {
+            const active = filters.lead_type === type;
+            return (
+              <button
+                key={type}
+                title={label}
+                onClick={() => {
+                  setFilters({ ...filters, lead_type: active ? "" : type });
+                  setPage(1);
+                }}
+                className={`w-8 h-8 rounded-full ${bg} transition-all ${
+                  active
+                    ? `ring-2 ring-offset-2 ${ring} scale-110 shadow-md`
+                    : "opacity-60 hover:opacity-100 hover:scale-105"
+                }`}
+              />
+            );
+          })}
+          <div className="w-px h-6 bg-gray-200" />
           <Link to="/leads/new" className="btn-primary flex items-center gap-2">
             <Plus className="w-4 h-4" /> Enroll Lead
           </Link>

@@ -23,9 +23,17 @@ import {
 export default function AdminPage() {
   const queryClient = useQueryClient();
   const [showCreateTenant, setShowCreateTenant] = useState(false);
+  const [editingTenant, setEditingTenant] = useState<any>(null);
+  const [editTenantForm, setEditTenantForm] = useState({
+    name: "",
+    subdomain: "",
+    vertical_type: "general",
+    plan_tier: "starter",
+  });
   const [activeTab, setActiveTab] = useState<"overview" | "tenants" | "analytics" | "leads">("overview");
   const [selectedTenantForLeads, setSelectedTenantForLeads] = useState<string | null>(null);
   const [leadsPage, setLeadsPage] = useState(1);
+  const [leadTypeFilter, setLeadTypeFilter] = useState("");
   const [form, setForm] = useState({
     name: "",
     subdomain: "",
@@ -48,9 +56,12 @@ export default function AdminPage() {
   });
 
   const { data: tenantLeads, isLoading: leadsLoading } = useQuery({
-    queryKey: ["tenant-leads", selectedTenantForLeads, leadsPage],
-    queryFn: () => 
-      api.get(`/admin/tenants/${selectedTenantForLeads}/leads?page=${leadsPage}&limit=15`).then((r) => r.data),
+    queryKey: ["tenant-leads", selectedTenantForLeads, leadsPage, leadTypeFilter],
+    queryFn: () => {
+      const params = new URLSearchParams({ page: String(leadsPage), limit: "15" });
+      if (leadTypeFilter) params.set("lead_type", leadTypeFilter);
+      return api.get(`/admin/tenants/${selectedTenantForLeads}/leads?${params}`).then((r) => r.data);
+    },
     enabled: !!selectedTenantForLeads,
   });
 
@@ -90,6 +101,26 @@ export default function AdminPage() {
     },
     onError: (err: any) => toast.error(err.response?.data?.error || "Failed to delete tenant"),
   });
+
+  const updateTenantMutation = useMutation({
+    mutationFn: ({ id, ...data }: any) => api.put(`/admin/tenants/${id}`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin-analytics"] });
+      toast.success("Tenant updated");
+      setEditingTenant(null);
+    },
+    onError: (err: any) => toast.error(err.response?.data?.error || "Failed to update tenant"),
+  });
+
+  const openEditTenant = (tenant: any) => {
+    setEditingTenant(tenant);
+    setEditTenantForm({
+      name: tenant.name,
+      subdomain: tenant.subdomain,
+      vertical_type: tenant.vertical_type,
+      plan_tier: tenant.plan_tier,
+    });
+  };
 
   const overview = analytics?.overview;
   const tenants = analytics?.tenants || [];
@@ -423,6 +454,73 @@ export default function AdminPage() {
             </div>
           </Modal>
 
+          {/* Edit Tenant Modal */}
+          <Modal
+            isOpen={!!editingTenant}
+            onClose={() => setEditingTenant(null)}
+            title={`Edit — ${editingTenant?.name || ""}`}
+            size="md"
+          >
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Company Name</label>
+                <input
+                  value={editTenantForm.name}
+                  onChange={(e) => setEditTenantForm({ ...editTenantForm, name: e.target.value })}
+                  className="input-field"
+                  placeholder="Company name"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Subdomain</label>
+                <input
+                  value={editTenantForm.subdomain}
+                  onChange={(e) => setEditTenantForm({ ...editTenantForm, subdomain: e.target.value })}
+                  className="input-field"
+                  placeholder="subdomain"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Vertical</label>
+                  <select
+                    value={editTenantForm.vertical_type}
+                    onChange={(e) => setEditTenantForm({ ...editTenantForm, vertical_type: e.target.value })}
+                    className="input-field"
+                  >
+                    {Object.entries(verticalLabels).map(([val, label]) => (
+                      <option key={val} value={val}>{label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Plan</label>
+                  <select
+                    value={editTenantForm.plan_tier}
+                    onChange={(e) => setEditTenantForm({ ...editTenantForm, plan_tier: e.target.value })}
+                    className="input-field"
+                  >
+                    <option value="starter">Starter</option>
+                    <option value="professional">Professional</option>
+                    <option value="enterprise">Enterprise</option>
+                  </select>
+                </div>
+              </div>
+              <div className="flex justify-end gap-3 pt-2">
+                <button onClick={() => setEditingTenant(null)} className="btn-secondary">
+                  Cancel
+                </button>
+                <button
+                  onClick={() => updateTenantMutation.mutate({ id: editingTenant.id, ...editTenantForm })}
+                  disabled={!editTenantForm.name.trim() || updateTenantMutation.isPending}
+                  className="btn-primary disabled:opacity-50"
+                >
+                  {updateTenantMutation.isPending ? "Saving…" : "Save Changes"}
+                </button>
+              </div>
+            </div>
+          </Modal>
+
           {/* Tenant Table */}
           <div className="card">
             <table className="w-full">
@@ -439,7 +537,11 @@ export default function AdminPage() {
               </thead>
               <tbody>
                 {tenants.map((tenant: any) => (
-                  <tr key={tenant.id} className="border-b hover:bg-gray-50">
+                  <tr
+                    key={tenant.id}
+                    onClick={() => openEditTenant(tenant)}
+                    className="border-b hover:bg-gray-50 cursor-pointer transition-colors"
+                  >
                     <td className="py-3 px-4">
                       <div>
                         <p className="font-medium text-gray-900">{tenant.name}</p>
@@ -467,7 +569,7 @@ export default function AdminPage() {
                         <span className="text-xs font-medium text-red-600">Inactive</span>
                       )}
                     </td>
-                    <td className="py-3 px-4">
+                    <td className="py-3 px-4" onClick={(e) => e.stopPropagation()}>
                       <div className="flex gap-2">
                         <button
                           onClick={() => toggleStatusMutation.mutate(tenant.id)}
@@ -499,7 +601,7 @@ export default function AdminPage() {
 
       {/* Analytics Tab */}
       {activeTab === "analytics" && (
-        <div className="space-y-6">
+        <div className="space-y-1 mb-3">
           <h3 className="text-lg font-semibold text-orange-600">Cross-Tenant Analytics</h3>
           <p className="text-sm text-cyan-600 mb-4">Compare performance metrics across all organizations</p>
           
@@ -578,8 +680,9 @@ export default function AdminPage() {
                   onClick={() => {
                     setSelectedTenantForLeads(tenant.id);
                     setLeadsPage(1);
+                    setLeadTypeFilter("");
                   }}
-                  className={`px-4 py-2 rounded-lg font-medium text-sm transition-all ${
+                  className={`px-4 py-1.5 rounded-full font-medium text-sm transition-all ${
                     selectedTenantForLeads === tenant.id
                       ? "bg-gradient-to-r from-cyan-500 to-cyan-600 text-white shadow-md"
                       : "bg-gray-100 text-gray-700 hover:bg-gray-200"
@@ -597,13 +700,41 @@ export default function AdminPage() {
           {/* Leads Table */}
           {selectedTenantForLeads && (
             <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-lg">
-              <div className="bg-gradient-to-r from-gray-50 to-gray-100 px-6 py-4 border-b border-gray-200">
-                <h4 className="font-semibold text-orange-600">
-                  Leads for {tenants.find((t: any) => t.id === selectedTenantForLeads)?.name}
-                </h4>
-                <p className="text-sm text-cyan-600 mt-1">
-                  Total: {tenantLeads?.pagination?.total || 0} leads
-                </p>
+              <div className="bg-gradient-to-r from-gray-50 to-gray-100 px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+                <div>
+                  <h4 className="font-semibold text-orange-600">
+                    Leads for {tenants.find((t: any) => t.id === selectedTenantForLeads)?.name}
+                  </h4>
+                  <p className="text-sm text-cyan-600 mt-1">
+                    Total: {tenantLeads?.pagination?.total || 0} leads
+                    {leadTypeFilter && <span className="ml-2 font-medium">· filtered by {leadTypeFilter}</span>}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  {[
+                    { type: "HOT",   bg: "bg-red-500",   ring: "ring-red-400",   label: "Hot"   },
+                    { type: "WARM",  bg: "bg-amber-400",  ring: "ring-amber-400",  label: "Warm"  },
+                    { type: "COLD",  bg: "bg-blue-400",   ring: "ring-blue-400",   label: "Cold"  },
+                    { type: "STALE", bg: "bg-gray-400",   ring: "ring-gray-400",   label: "Stale" },
+                  ].map(({ type, bg, ring, label }) => {
+                    const active = leadTypeFilter === type;
+                    return (
+                      <button
+                        key={type}
+                        title={label}
+                        onClick={() => {
+                          setLeadTypeFilter(active ? "" : type);
+                          setLeadsPage(1);
+                        }}
+                        className={`w-7 h-7 rounded-full ${bg} transition-all ${
+                          active
+                            ? `ring-2 ring-offset-2 ${ring} scale-110 shadow-md`
+                            : "opacity-60 hover:opacity-100 hover:scale-105"
+                        }`}
+                      />
+                    );
+                  })}
+                </div>
               </div>
 
               {leadsLoading ? (
@@ -676,7 +807,7 @@ export default function AdminPage() {
                                 : "Unassigned"}
                             </td>
                             <td className="py-3 px-4 text-center">
-                              <span className="font-bold text-cyan-600">{lead.lead_score || 0}</span>
+                              <span className="font-bold text-cyan-600">{lead.score ?? 0}</span>
                             </td>
                             <td className="py-3 px-4 text-sm text-gray-600">
                               {formatDate(lead.createdAt)}
