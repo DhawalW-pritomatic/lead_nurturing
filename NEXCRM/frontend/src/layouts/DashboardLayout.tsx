@@ -1,4 +1,5 @@
 import { Outlet, NavLink, useNavigate } from "react-router-dom";
+import { useState, useEffect, useRef } from "react";
 import { useAuthStore } from "../store/authStore";
 import { useQuery } from "@tanstack/react-query";
 import api from "../services/api";
@@ -6,7 +7,6 @@ import {
   LayoutDashboard,
   Users,
   FileText,
-  Mail,
   GitBranch,
   FolderOpen,
   Settings,
@@ -14,18 +14,21 @@ import {
   Target,
   Zap,
   UserCircle,
-  Clock,
   Upload,
   Bell,
   BookOpen,
   Shield,
+  Heart,
+  CheckSquare,
+  X,
+  AlertTriangle,
 } from "lucide-react";
 
 const navItems = [
   { to: "/", icon: LayoutDashboard, label: "Dashboard", end: true },
   { to: "/leads", icon: Target, label: "Leads" },
-  { to: "/outreach", icon: Mail, label: "Outreach" },
-  { to: "/scheduler", icon: Clock, label: "Scheduler" },
+  { to: "/nurturing", icon: Heart, label: "Nurturing" },
+  { to: "/tasks", icon: CheckSquare, label: "Tasks" },
   { to: "/templates", icon: FileText, label: "Templates" },
   { to: "/sequences", icon: Zap, label: "Sequences" },
   { to: "/bulk-import", icon: Upload, label: "Bulk Import" },
@@ -41,9 +44,33 @@ const adminNavItems = [
   { to: "/admin", icon: Shield, label: "Super Admin", roles: ["super_admin"] },
 ];
 
+interface FailedLeadEvent {
+  lead_id: string;
+  lead_name: string;
+  call_attempt_count: number;
+}
+
 export default function DashboardLayout() {
   const { user, logout } = useAuthStore();
   const navigate = useNavigate();
+  const [failedAlert, setFailedAlert] = useState<FailedLeadEvent | null>(null);
+  const sseRef = useRef<EventSource | null>(null);
+
+  // SSE for real-time events (lead_failed, temperature changes)
+  useEffect(() => {
+    const token = localStorage.getItem("token") || sessionStorage.getItem("token");
+    if (!token) return;
+    const es = new EventSource(`http://localhost:5000/api/outreach/events?token=${token}`);
+    sseRef.current = es;
+
+    es.addEventListener("lead_failed", (e: MessageEvent) => {
+      try {
+        setFailedAlert(JSON.parse(e.data));
+      } catch (_) {}
+    });
+
+    return () => { es.close(); sseRef.current = null; };
+  }, []);
 
   const { data: unreadData } = useQuery({
     queryKey: ["notifications-unread"],
@@ -149,6 +176,34 @@ export default function DashboardLayout() {
           <Outlet />
         </div>
       </main>
+
+      {/* Lead FAILED alert popup */}
+      {failedAlert && (
+        <div className="fixed bottom-6 right-6 z-50 w-80 bg-white border border-red-200 rounded-2xl shadow-2xl p-5">
+          <div className="flex items-start gap-3">
+            <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0">
+              <AlertTriangle className="w-5 h-5 text-red-600" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-bold text-gray-900">Call Threshold Reached</p>
+              <p className="text-sm text-gray-600 mt-0.5">
+                <span className="font-medium">{failedAlert.lead_name}</span> has been marked{" "}
+                <span className="text-red-600 font-semibold">FAILED</span> after{" "}
+                {failedAlert.call_attempt_count} unsuccessful call attempts.
+              </p>
+              <button
+                onClick={() => { navigate(`/leads/${failedAlert.lead_id}`); setFailedAlert(null); }}
+                className="mt-2 text-xs text-brand-600 hover:underline font-medium"
+              >
+                View Lead →
+              </button>
+            </div>
+            <button onClick={() => setFailedAlert(null)} className="flex-shrink-0 mt-0.5">
+              <X className="w-4 h-4 text-gray-400 hover:text-gray-600" />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

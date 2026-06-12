@@ -36,6 +36,12 @@ import notificationRoutes from './modules/notifications/routes';
 import schedulerRoutes from './modules/scheduler/routes';
 import bulkImportRoutes from './modules/bulk-import/routes';
 import adminRoutes from './modules/admin/routes';
+import callRoutes from './modules/calls/routes';
+import callbackRoutes from './modules/callbacks/routes';
+import taskRoutes from './modules/tasks/routes';
+import whatsappRoutes from './modules/whatsapp/routes';
+import twilioWebhooks from './webhooks/twilio';
+import whatsappWebhooks from './webhooks/whatsapp';
 
 // Import cron jobs
 import { initCronJobs } from './cron';
@@ -94,6 +100,14 @@ app.use('/api/notifications', userRateLimiter, notificationRoutes);
 app.use('/api/scheduler', userRateLimiter, schedulerRoutes);
 app.use('/api/bulk-import', userRateLimiter, bulkImportRateLimiter, bulkImportRoutes);
 app.use('/api/admin', userRateLimiter, adminRoutes);
+app.use('/api/calls', userRateLimiter, callRoutes);
+app.use('/api/callbacks', userRateLimiter, callbackRoutes);
+app.use('/api/tasks', userRateLimiter, taskRoutes);
+app.use('/api/whatsapp', userRateLimiter, whatsappRoutes);
+
+// Twilio webhooks (no auth — Twilio posts here directly)
+app.use('/webhooks/twilio', twilioWebhooks);
+app.use('/webhooks/whatsapp', whatsappWebhooks);
 
 // Tracking routes (public - no /api prefix for pixel/click URLs embedded in emails)
 app.use('/track', trackingRoutes);
@@ -102,7 +116,7 @@ app.use('/track', trackingRoutes);
 app.use('/api/track', userRateLimiter, trackingRoutes);
 
 // Health check
-app.get('/health', (req, res) => res.json({ status: 'ok', timestamp: new Date().toISOString() }));
+app.get('/health', (_req, res) => res.json({ status: 'ok', timestamp: new Date().toISOString() }));
 
 // Error handler
 app.use(errorHandler);
@@ -112,6 +126,14 @@ const start = async () => {
   try {
     await sequelize.authenticate();
     console.log('Database connected.');
+
+    // Ensure new ENUM values exist before sync (Sequelize can't add ENUM values with alter)
+    try {
+      await sequelize.query(`ALTER TYPE "enum_leads_lead_type" ADD VALUE IF NOT EXISTS 'FAILED'`);
+      await sequelize.query(`ALTER TYPE "enum_leads_status" ADD VALUE IF NOT EXISTS 'FAILED'`);
+    } catch (_) {
+      // Enums may already contain the value or may use a different name — safe to ignore
+    }
 
     // Sync models. Use `alter: true` only when explicitly requested via env to avoid
     // crashes on schemas that drift between model definitions and existing DB state

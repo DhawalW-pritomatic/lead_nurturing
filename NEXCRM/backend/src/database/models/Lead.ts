@@ -24,11 +24,25 @@ interface LeadAttributes {
   custom_fields: object;
   last_activity_at?: Date;
   converted_at?: Date;
+  // Call nurturing fields
+  do_not_call?: boolean;
+  call_attempt_count?: number;
+  last_call_at?: Date;
+  failed_at?: Date;
+  sla_breach_at?: Date;
+  // WhatsApp fields
+  whatsapp_opted_in?: boolean;
+  whatsapp_opted_out?: boolean;
   created_at?: Date;
   updated_at?: Date;
 }
 
-interface LeadCreationAttributes extends Optional<LeadAttributes, 'id' | 'phone' | 'company' | 'city' | 'application_type_id' | 'status' | 'lead_type' | 'score' | 'assigned_rep_id' | 'gdpr_consent' | 'opted_out' | 'email_status' | 'notes' | 'custom_fields' | 'last_activity_at' | 'converted_at'> {}
+interface LeadCreationAttributes extends Optional<LeadAttributes,
+  'id' | 'phone' | 'company' | 'city' | 'application_type_id' | 'status' | 'lead_type' |
+  'score' | 'assigned_rep_id' | 'gdpr_consent' | 'opted_out' | 'email_status' | 'notes' |
+  'custom_fields' | 'last_activity_at' | 'converted_at' | 'do_not_call' | 'call_attempt_count' |
+  'last_call_at' | 'failed_at' | 'sla_breach_at' | 'whatsapp_opted_in' | 'whatsapp_opted_out'
+> {}
 
 class Lead extends Model<LeadAttributes, LeadCreationAttributes> implements LeadAttributes {
   public id!: string;
@@ -53,6 +67,13 @@ class Lead extends Model<LeadAttributes, LeadCreationAttributes> implements Lead
   public custom_fields!: object;
   public last_activity_at!: Date;
   public converted_at!: Date;
+  public do_not_call!: boolean;
+  public call_attempt_count!: number;
+  public last_call_at!: Date;
+  public failed_at!: Date;
+  public sla_breach_at!: Date;
+  public whatsapp_opted_in!: boolean;
+  public whatsapp_opted_out!: boolean;
   public readonly created_at!: Date;
   public readonly updated_at!: Date;
 }
@@ -69,8 +90,17 @@ Lead.init(
     city: { type: DataTypes.STRING(100) },
     source: { type: DataTypes.STRING(50), allowNull: false },
     application_type_id: { type: DataTypes.UUID },
-    status: { type: DataTypes.ENUM('NEW', 'ACTIVE', 'ENGAGED', 'MEETING_SCHEDULED', 'PROPOSAL_SENT', 'NEGOTIATION', 'CONVERTED', 'LOST', 'OPTED_OUT', 'STALE'), defaultValue: 'NEW' },
-    lead_type: { type: DataTypes.ENUM('COLD', 'WARM', 'HOT', 'STALE', 'CONVERTED', 'LOST'), defaultValue: 'COLD' },
+    status: {
+      type: DataTypes.ENUM(
+        'NEW', 'ACTIVE', 'ENGAGED', 'MEETING_SCHEDULED', 'PROPOSAL_SENT',
+        'NEGOTIATION', 'CONVERTED', 'LOST', 'OPTED_OUT', 'STALE', 'FAILED'
+      ),
+      defaultValue: 'NEW',
+    },
+    lead_type: {
+      type: DataTypes.ENUM('COLD', 'WARM', 'HOT', 'STALE', 'CONVERTED', 'LOST', 'FAILED'),
+      defaultValue: 'COLD',
+    },
     score: { type: DataTypes.INTEGER, defaultValue: 0 },
     assigned_rep_id: { type: DataTypes.UUID },
     enrolled_by: { type: DataTypes.UUID, allowNull: false },
@@ -81,6 +111,13 @@ Lead.init(
     custom_fields: { type: DataTypes.JSONB, defaultValue: {} },
     last_activity_at: { type: DataTypes.DATE },
     converted_at: { type: DataTypes.DATE },
+    do_not_call: { type: DataTypes.BOOLEAN, defaultValue: false },
+    call_attempt_count: { type: DataTypes.INTEGER, defaultValue: 0 },
+    last_call_at: { type: DataTypes.DATE },
+    failed_at: { type: DataTypes.DATE },
+    sla_breach_at: { type: DataTypes.DATE },
+    whatsapp_opted_in: { type: DataTypes.BOOLEAN, defaultValue: false },
+    whatsapp_opted_out: { type: DataTypes.BOOLEAN, defaultValue: false },
   },
   {
     sequelize,

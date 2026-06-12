@@ -68,11 +68,11 @@ export class ScoringService {
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
 
-    // 30-day decay: -30 points + mark as STALE
+    // 30-day decay: -30 points + mark as FAILED (replaced STALE)
     const staleLeads = await Lead.findAll({
       where: {
         tenant_id: tenantId,
-        lead_type: { [Op.notIn]: ['CONVERTED', 'LOST', 'STALE'] },
+        lead_type: { [Op.notIn]: ['CONVERTED', 'LOST', 'STALE', 'FAILED'] },
         last_activity_at: { [Op.lt]: thirtyDaysAgo },
         opted_out: false,
       },
@@ -80,7 +80,7 @@ export class ScoringService {
 
     for (const lead of staleLeads) {
       await Lead.update(
-        { score: Math.max(0, lead.score - 30), lead_type: 'STALE', status: 'STALE' },
+        { score: Math.max(0, lead.score - 30), lead_type: 'FAILED', status: 'FAILED', failed_at: new Date() },
         { where: { id: lead.id } }
       );
     }

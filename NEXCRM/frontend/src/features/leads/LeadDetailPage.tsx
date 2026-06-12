@@ -15,7 +15,11 @@ import {
   Pencil,
   X,
   Check,
+  PhoneCall,
+  AlertTriangle,
+  PhoneOff,
 } from "lucide-react";
+import LogCallModal from "../../components/LogCallModal";
 import {
   LineChart,
   Line,
@@ -32,6 +36,13 @@ export default function LeadDetailPage() {
 
   const [editMode, setEditMode] = useState(false);
   const [editForm, setEditForm] = useState<any>(null);
+  const [showCallModal, setShowCallModal] = useState(false);
+
+  const { data: callHistory } = useQuery({
+    queryKey: ["call-history", id],
+    queryFn: () => api.get("/calls", { params: { lead_id: id } }).then((r) => r.data),
+    enabled: !!id,
+  });
 
   const { data: lead, isLoading } = useQuery({
     queryKey: ["lead", id],
@@ -122,6 +133,7 @@ export default function LeadDetailPage() {
     WARM: "badge-warm",
     COLD: "badge-cold",
     STALE: "badge-stale",
+    FAILED: "bg-gray-200 text-gray-700 px-2.5 py-0.5 rounded-full text-xs font-semibold",
     CONVERTED: "badge-converted",
     LOST: "bg-red-100 text-red-800 px-2.5 py-0.5 rounded-full text-xs font-medium",
   };
@@ -141,10 +153,40 @@ export default function LeadDetailPage() {
           </h1>
           <p className="text-gray-500">{lead.email}</p>
         </div>
-        <span className={typeBadgeClass[lead.lead_type] || "badge-cold"}>
-          {lead.lead_type}
-        </span>
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className={typeBadgeClass[lead.lead_type] || "badge-cold"}>
+            {lead.lead_type}
+          </span>
+          {lead.do_not_call && (
+            <span className="flex items-center gap-1 bg-red-100 text-red-700 text-xs font-medium px-2.5 py-0.5 rounded-full">
+              <PhoneOff className="w-3 h-3" /> DNC
+            </span>
+          )}
+          {!lead.do_not_call && lead.phone && (
+            <button
+              onClick={() => setShowCallModal(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-green-500 hover:bg-green-600 text-white text-xs font-medium rounded-full transition-colors"
+            >
+              <PhoneCall className="w-3.5 h-3.5" /> Call Lead
+            </button>
+          )}
+        </div>
       </div>
+
+      {/* FAILED warning banner */}
+      {lead.lead_type === "FAILED" && (
+        <div className="flex items-start gap-3 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+          <AlertTriangle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
+          <div className="text-sm">
+            <p className="font-semibold text-red-800">This lead is marked FAILED</p>
+            <p className="text-red-700 mt-0.5">
+              {lead.call_attempt_count
+                ? `${lead.call_attempt_count} unsuccessful call attempts. Consider a different outreach channel.`
+                : "This lead has been inactive for 30+ days with no engagement."}
+            </p>
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Lead Info */}
@@ -432,6 +474,46 @@ export default function LeadDetailPage() {
             </div>
           </div>
 
+          {/* Call History */}
+          <div className="card">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-semibold text-gray-900">Call History</h3>
+              {lead.call_attempt_count > 0 && (
+                <span className="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full font-medium">
+                  {lead.call_attempt_count} attempt{lead.call_attempt_count !== 1 ? "s" : ""}
+                </span>
+              )}
+            </div>
+            <div className="space-y-2 max-h-48 overflow-y-auto">
+              {(callHistory?.records || []).map((call: any) => (
+                <div key={call.id} className="flex items-center justify-between py-2 border-b border-gray-100 last:border-0">
+                  <div>
+                    <p className="text-sm font-medium text-gray-900 flex items-center gap-1.5">
+                      {call.direction === "inbound" ? "↙ Inbound" : "↗ Outbound"}
+                      {call.disposition && (
+                        <span className="text-xs text-gray-500">· {call.disposition}</span>
+                      )}
+                    </p>
+                    <p className="text-xs text-gray-400">
+                      {call.rep ? `${call.rep.first_name} ${call.rep.last_name} · ` : ""}
+                      {formatDateTime(call.created_at)}
+                    </p>
+                  </div>
+                  <span className={`text-xs px-2 py-0.5 rounded font-medium ${
+                    call.status === "completed" ? "bg-green-50 text-green-700" :
+                    call.status === "no-answer" ? "bg-gray-100 text-gray-600" :
+                    call.status === "failed" ? "bg-red-50 text-red-600" : "bg-blue-50 text-blue-600"
+                  }`}>
+                    {call.status}
+                  </span>
+                </div>
+              ))}
+              {(!callHistory?.records || callHistory.records.length === 0) && (
+                <p className="text-sm text-gray-500 text-center py-4">No calls yet.</p>
+              )}
+            </div>
+          </div>
+
           {/* Outreach History */}
           <div className="card">
             <h3 className="font-semibold text-gray-900 mb-4">
@@ -467,6 +549,12 @@ export default function LeadDetailPage() {
           </div>
         </div>
       </div>
+
+      <LogCallModal
+        isOpen={showCallModal}
+        onClose={() => setShowCallModal(false)}
+        lead={{ id: lead.id, first_name: lead.first_name, last_name: lead.last_name, phone: lead.phone }}
+      />
     </div>
   );
 }
