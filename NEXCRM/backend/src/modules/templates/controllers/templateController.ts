@@ -123,6 +123,77 @@ export class TemplateController {
     }
   }
 
+  async getMetrics(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      const templateId = req.params.id;
+      const tenantId = req.user!.tenant_id;
+
+      // Verify template belongs to this tenant (or super_admin)
+      const whereClause = req.user!.role === 'super_admin'
+        ? 'id = :templateId'
+        : 'id = :templateId AND tenant_id = :tenantId';
+      const tmpl = await Template.sequelize!.query<{ id: string }>(
+        `SELECT id FROM templates WHERE ${whereClause} LIMIT 1`,
+        { replacements: { templateId, tenantId }, type: QueryTypes.SELECT }
+      );
+      if (!tmpl.length) { res.status(404).json({ error: 'Template not found.' }); return; }
+
+      // Aggregate totals
+      const [totals] = await Template.sequelize!.query<{
+        total_sent: string;
+        total_opened: string;
+        total_clicked: string;
+        total_failed: string;
+        last_used: string | null;
+      }>(
+        `SELECT
+           COUNT(*)                                          AS total_sent,
+           COUNT(*) FILTER (WHERE opened_at IS NOT NULL)    AS total_opened,
+           COUNT(*) FILTER (WHERE clicked_at IS NOT NULL)   AS total_clicked,
+           COUNT(*) FILTER (WHERE status = 'failed')        AS total_failed,
+           MAX(sent_at)                                     AS last_used
+         FROM outreach_records
+         WHERE template_id = :templateId
+           AND tenant_id = :tenantId
+           AND status != 'pending'`,
+        { replacements: { templateId, tenantId }, type: QueryTypes.SELECT }
+      );
+
+      // Daily sends — last 30 days
+      const dailySends = await Template.sequelize!.query<{ date: string; count: string }>(
+        `SELECT
+           TO_CHAR(DATE(sent_at), 'YYYY-MM-DD') AS date,
+           COUNT(*)                              AS count
+         FROM outreach_records
+         WHERE template_id = :templateId
+           AND tenant_id = :tenantId
+           AND sent_at >= NOW() - INTERVAL '30 days'
+           AND status != 'pending'
+         GROUP BY DATE(sent_at)
+         ORDER BY DATE(sent_at) ASC`,
+        { replacements: { templateId, tenantId }, type: QueryTypes.SELECT }
+      );
+
+      const sent    = parseInt(totals?.total_sent    ?? '0', 10);
+      const opened  = parseInt(totals?.total_opened  ?? '0', 10);
+      const clicked = parseInt(totals?.total_clicked ?? '0', 10);
+      const failed  = parseInt(totals?.total_failed  ?? '0', 10);
+
+      res.json({
+        total_sent:    sent,
+        total_opened:  opened,
+        total_clicked: clicked,
+        total_failed:  failed,
+        open_rate:     sent > 0 ? parseFloat(((opened  / sent) * 100).toFixed(1)) : 0,
+        click_rate:    sent > 0 ? parseFloat(((clicked / sent) * 100).toFixed(1)) : 0,
+        last_used:     totals?.last_used ?? null,
+        daily_sends:   dailySends.map(r => ({ date: r.date, count: parseInt(r.count, 10) })),
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  }
+
   async assign(req: AuthRequest, res: Response): Promise<void> {
     try {
       const source = await Template.findByPk(req.params.id);

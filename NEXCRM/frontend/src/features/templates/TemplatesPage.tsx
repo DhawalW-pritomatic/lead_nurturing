@@ -4,7 +4,9 @@ import api from "../../services/api";
 import toast from "react-hot-toast";
 import { useAuthStore } from "../../store/authStore";
 import Modal from "../../components/Modal";
-import { Plus, Edit2, Trash2, Image, Paperclip, ChevronDown, Building2, X } from "lucide-react";
+import TemplateMetricsModal from "./TemplateMetricsModal";
+import TemplatePreviewModal from "./TemplatePreviewModal";
+import { Plus, Edit2, Trash2, Image, Paperclip, ChevronDown, Building2, X, BarChart2, Search } from "lucide-react";
 
 // ── types ─────────────────────────────────────────────────────────────────────
 interface AssignedTenant {
@@ -58,6 +60,9 @@ export default function TemplatesPage() {
 
   const [showCreate, setShowCreate] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<Template | null>(null);
+  const [metricsTemplate, setMetricsTemplate] = useState<Template | null>(null);
+  const [previewTemplate, setPreviewTemplate] = useState<Template | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
   const [showAssetPicker, setShowAssetPicker] = useState(false);
   const [selectedTenantTab, setSelectedTenantTab] = useState<string>("all");
   const [openAssignDropdown, setOpenAssignDropdown] = useState<string | null>(null);
@@ -177,13 +182,25 @@ export default function TemplatesPage() {
   }, [templates]);
 
   const visibleTemplates = useMemo(() => {
-    if (!isSuperAdmin) return templates;
-    if (selectedTenantTab === "all") {
-      // Hide assigned copies — they are represented by labels on the original card
-      return templates.filter((t) => !t.assigned_from_id);
+    let list = templates;
+    if (isSuperAdmin) {
+      if (selectedTenantTab === "all") {
+        list = list.filter((t) => !t.assigned_from_id);
+      } else {
+        list = list.filter((t) => t.tenant_id === selectedTenantTab);
+      }
     }
-    return templates.filter((t) => t.tenant_id === selectedTenantTab);
-  }, [templates, isSuperAdmin, selectedTenantTab]);
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      list = list.filter(
+        (t) =>
+          t.name.toLowerCase().includes(q) ||
+          t.category.toLowerCase().includes(q) ||
+          (t.subject ?? "").toLowerCase().includes(q)
+      );
+    }
+    return list;
+  }, [templates, isSuperAdmin, selectedTenantTab, searchQuery]);
 
   // Tenants available to assign to (excludes the template's own tenant)
   const assignableTenants = (template: Template) =>
@@ -204,16 +221,28 @@ export default function TemplatesPage() {
             Manage email templates for outreach and sequences
           </p>
         </div>
-        <button
-          onClick={() => {
-            setShowCreate(true);
-            setEditingTemplate(null);
-            resetForm();
-          }}
-          className="btn-primary flex items-center gap-2"
-        >
-          <Plus className="w-4 h-4" /> New Template
-        </button>
+        <div className="flex items-center gap-2">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+            <input
+              type="text"
+              placeholder="Search templates…"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="input-field pl-9 w-56 text-sm"
+            />
+          </div>
+          <button
+            onClick={() => {
+              setShowCreate(true);
+              setEditingTemplate(null);
+              resetForm();
+            }}
+            className="btn-primary flex items-center gap-2 whitespace-nowrap"
+          >
+            <Plus className="w-4 h-4" /> New Template
+          </button>
+        </div>
       </div>
 
       {/* Create / Edit Modal */}
@@ -375,7 +404,7 @@ export default function TemplatesPage() {
               <div key={i} className="h-40 bg-gray-200 rounded-xl animate-pulse" />
             ))
           : visibleTemplates.map((t) => (
-              <div key={t.id} className="card hover:shadow-md transition-shadow">
+              <div key={t.id} className="card hover:shadow-md transition-shadow cursor-pointer" onClick={() => setPreviewTemplate(t)}>
                 {/* Card header row */}
                 <div className="flex items-start justify-between mb-2">
                   <div className="flex-1 min-w-0 pr-2">
@@ -407,7 +436,14 @@ export default function TemplatesPage() {
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-1 shrink-0">
+                  <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+                    <button
+                      onClick={() => setMetricsTemplate(t)}
+                      className="p-1.5 hover:bg-brand-50 rounded"
+                      title="View metrics"
+                    >
+                      <BarChart2 className="w-3.5 h-3.5 text-brand-500" />
+                    </button>
                     <button
                       onClick={() => handleEdit(t)}
                       className="p-1.5 hover:bg-gray-100 rounded"
@@ -506,6 +542,17 @@ export default function TemplatesPage() {
           No templates found.
         </div>
       )}
+
+      <TemplateMetricsModal
+        template={metricsTemplate}
+        onClose={() => setMetricsTemplate(null)}
+      />
+
+      <TemplatePreviewModal
+        template={previewTemplate}
+        onClose={() => setPreviewTemplate(null)}
+        onEdit={(t) => { setPreviewTemplate(null); handleEdit(t); }}
+      />
     </div>
   );
 }
