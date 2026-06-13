@@ -121,8 +121,9 @@ export class AdminController {
       const { tenantId } = req.params;
       const page = parseInt(req.query.page as string) || 1;
       const limit = parseInt(req.query.limit as string) || 50;
-      
-      const result = await adminService.getTenantLeads(tenantId, page, limit);
+      const leadType = req.query.lead_type as string | undefined;
+
+      const result = await adminService.getTenantLeads(tenantId, page, limit, leadType);
       res.json(result);
     } catch (error: any) {
       res.status(500).json({ error: error.message });

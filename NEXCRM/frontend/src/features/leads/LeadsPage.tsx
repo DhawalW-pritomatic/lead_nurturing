@@ -90,6 +90,26 @@ export default function LeadsPage() {
           </p>
         </div>
         <div className="flex items-center gap-3">
+          {[
+            { type: "HOT", bg: "bg-red-500", ring: "ring-red-500" },
+            { type: "WARM", bg: "bg-amber-500", ring: "ring-amber-500" },
+            { type: "COLD", bg: "bg-blue-500", ring: "ring-blue-500" },
+            { type: "STALE", bg: "bg-gray-400", ring: "ring-gray-400" },
+          ].map(({ type, bg, ring }) => (
+            <button
+              key={type}
+              onClick={() => {
+                setFilters((f: any) => ({ ...f, lead_type: f.lead_type === type ? "" : type }));
+                setPage(1);
+              }}
+              title={type}
+              className={`w-8 h-8 rounded-full ${bg} transition-all ${
+                filters.lead_type === type
+                  ? `ring-2 ring-offset-2 ${ring} scale-110`
+                  : "opacity-60 hover:opacity-100 hover:scale-105"
+              }`}
+            />
+          ))}
           <Link to="/leads/new" className="btn-primary flex items-center gap-2">
             <Plus className="w-4 h-4" /> Enroll Lead
           </Link>

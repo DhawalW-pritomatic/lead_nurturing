@@ -6,9 +6,11 @@ import toast from "react-hot-toast";
 import {
   Save, Shield, Building2, Users, Database, Activity, ExternalLink,
   User, Lock, Bell, Phone, MessageSquare, Clock, Zap,
-  ToggleLeft, ChevronRight, CheckCircle, AlertTriangle,
+  ToggleLeft, ToggleRight, ChevronRight, CheckCircle, AlertTriangle,
   Mail, Smartphone, BarChart2, Plus, Trash2, Globe, Key,
+  Edit2, Power, Layers, Megaphone, AlertOctagon, SlidersHorizontal,
 } from "lucide-react";
+import Modal from "../../components/Modal";
 import { useAuthStore } from "../../store/authStore";
 import { formatDate } from "../../utils/dateUtils";
 
@@ -51,9 +53,9 @@ function SectionHeader({ icon: Icon, title, description }: { icon: any; title: s
   );
 }
 
-type Tab = "profile" | "workspace" | "nurturing" | "email" | "whatsapp" | "notifications" | "scoring" | "scheduler";
+type Tab = "profile" | "workspace" | "nurturing" | "email" | "whatsapp" | "notifications" | "scoring" | "scheduler" | "tenants";
 
-const NAV: { key: Tab; label: string; icon: any; adminOnly?: boolean }[] = [
+const NAV: { key: Tab; label: string; icon: any; adminOnly?: boolean; superAdminOnly?: boolean }[] = [
   { key: "profile",       label: "My Profile",          icon: User },
   { key: "workspace",     label: "Workspace",            icon: Building2,  adminOnly: true },
   { key: "nurturing",     label: "Nurturing Settings",   icon: Zap,         adminOnly: true },
@@ -62,27 +64,20 @@ const NAV: { key: Tab; label: string; icon: any; adminOnly?: boolean }[] = [
   { key: "notifications", label: "Notifications",        icon: Bell,        adminOnly: true },
   { key: "scoring",       label: "Lead Scoring",         icon: BarChart2,   adminOnly: true },
   { key: "scheduler",     label: "Scheduler & Calls",    icon: Phone,       adminOnly: true },
+  { key: "tenants",       label: "Tenant Management",    icon: Shield,      superAdminOnly: true },
 ];
 
 export default function SettingsPage() {
   const { user } = useAuthStore();
   const isSuperAdmin = user?.role === "super_admin";
   const isAdmin = user?.role === "tenant_admin" || isSuperAdmin;
-  const [tab, setTab] = useState<Tab>("profile");
+  const [tab, setTab] = useState<Tab>(isSuperAdmin ? "tenants" : "profile");
 
-  // ── Super admin keeps its own view ──────────────────────────────────────────
-  const { data: platformAnalytics } = useQuery({
-    queryKey: ["admin-analytics"],
-    queryFn: () => api.get("/admin/analytics").then((r) => r.data),
-    enabled: isSuperAdmin,
+  const visibleNav = NAV.filter((n) => {
+    if (n.superAdminOnly) return isSuperAdmin;
+    if (n.adminOnly) return isAdmin;
+    return true;
   });
-  const { data: systemHealth } = useQuery({
-    queryKey: ["system-health"],
-    queryFn: () => api.get("/admin/system/health").then((r) => r.data),
-    enabled: isSuperAdmin,
-  });
-
-  if (isSuperAdmin) return <SuperAdminView analytics={platformAnalytics} health={systemHealth} />;
 
   return (
     <div className="flex gap-6 min-h-[calc(100vh-120px)]">
@@ -93,7 +88,7 @@ export default function SettingsPage() {
             <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Settings</p>
           </div>
           <nav className="p-2">
-            {NAV.filter((n) => !n.adminOnly || isAdmin).map((n) => (
+            {visibleNav.map((n) => (
               <button
                 key={n.key}
                 onClick={() => setTab(n.key)}
@@ -122,6 +117,7 @@ export default function SettingsPage() {
         {tab === "notifications" && <NotificationsTab />}
         {tab === "scoring"       && <LeadScoringTab />}
         {tab === "scheduler"     && <SchedulerTab />}
+        {tab === "tenants"       && <TenantManagementTab />}
       </div>
     </div>
   );
@@ -1234,95 +1230,743 @@ function LeadScoringTab() {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// Super Admin view (unchanged, just wrapped)
+// TAB: Tenant Management (super admin only)
 // ════════════════════════════════════════════════════════════════════════════
-function SuperAdminView({ analytics, health }: { analytics: any; health: any }) {
+function TenantManagementTab() {
+  const queryClient = useQueryClient();
+
+  const { data: analytics } = useQuery({
+    queryKey: ["admin-analytics"],
+    queryFn: () => api.get("/admin/analytics").then((r) => r.data),
+  });
+  const { data: health } = useQuery({
+    queryKey: ["system-health"],
+    queryFn: () => api.get("/admin/system/health").then((r) => r.data),
+  });
+
+  const tenants: any[] = analytics?.tenants || [];
   const overview = analytics?.overview;
+  const dbOk = health?.database?.status === "connected";
+
+  const [showCreate, setShowCreate] = useState(false);
+  const [editingTenant, setEditingTenant] = useState<any>(null);
+  const [editTab, setEditTab] = useState<"company" | "contact" | "branding">("company");
+  const [createForm, setCreateForm] = useState({
+    name: "", subdomain: "", vertical_type: "general", plan_tier: "starter",
+    admin_email: "", admin_password: "Welcome@123", admin_first_name: "", admin_last_name: "",
+  });
+  const [editForm, setEditForm] = useState({
+    name: "", subdomain: "", vertical_type: "general", plan_tier: "starter", is_active: true,
+    contact_email: "", contact_phone: "", website: "",
+    address: "", city: "", state: "", country: "", postal_code: "",
+    company_size: "", description: "", founded_year: "",
+    primary_color: "#0891b2", logo_url: "", tagline: "",
+  });
+
+  const createMutation = useMutation({
+    mutationFn: (data: any) => api.post("/admin/tenants", data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin-analytics"] });
+      toast.success("Tenant created!");
+      setShowCreate(false);
+      setCreateForm({ name: "", subdomain: "", vertical_type: "general", plan_tier: "starter", admin_email: "", admin_password: "Welcome@123", admin_first_name: "", admin_last_name: "" });
+    },
+    onError: (e: any) => toast.error(e.response?.data?.error || "Failed to create tenant"),
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: ({ id, ...data }: any) => api.put(`/admin/tenants/${id}`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin-analytics"] });
+      toast.success("Tenant updated!");
+      setEditingTenant(null);
+    },
+    onError: (e: any) => toast.error(e.response?.data?.error || "Failed to update"),
+  });
+
+  const toggleMutation = useMutation({
+    mutationFn: (id: string) => api.patch(`/admin/tenants/${id}/status`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["admin-analytics"] }),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => api.delete(`/admin/tenants/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin-analytics"] });
+      toast.success("Tenant deleted.");
+    },
+    onError: (e: any) => toast.error(e.response?.data?.error || "Failed to delete"),
+  });
+
+  const openEdit = (t: any) => {
+    setEditingTenant(t);
+    setEditTab("company");
+    setEditForm({
+      name: t.name || "", subdomain: t.subdomain || "",
+      vertical_type: t.vertical_type || "general", plan_tier: t.plan_tier || "starter", is_active: t.is_active ?? true,
+      contact_email: t.settings?.contact_email || "", contact_phone: t.settings?.contact_phone || "",
+      website: t.settings?.website || "", address: t.settings?.address || "",
+      city: t.settings?.city || "", state: t.settings?.state || "",
+      country: t.settings?.country || "", postal_code: t.settings?.postal_code || "",
+      company_size: t.settings?.company_size || "", description: t.settings?.description || "",
+      founded_year: t.settings?.founded_year || "",
+      primary_color: t.branding?.primary_color || "#0891b2",
+      logo_url: t.branding?.logo_url || "", tagline: t.branding?.tagline || "",
+    });
+  };
+
+  const handleUpdate = () => {
+    if (!editingTenant) return;
+    updateMutation.mutate({
+      id: editingTenant.id,
+      name: editForm.name, subdomain: editForm.subdomain,
+      vertical_type: editForm.vertical_type, plan_tier: editForm.plan_tier, is_active: editForm.is_active,
+      settings: {
+        contact_email: editForm.contact_email, contact_phone: editForm.contact_phone,
+        website: editForm.website, address: editForm.address, city: editForm.city,
+        state: editForm.state, country: editForm.country, postal_code: editForm.postal_code,
+        company_size: editForm.company_size, description: editForm.description, founded_year: editForm.founded_year,
+      },
+      branding: { primary_color: editForm.primary_color, logo_url: editForm.logo_url, tagline: editForm.tagline },
+    });
+  };
+
+  // ── Plan Limits state ──────────────────────────────────────────────────────
+  const PLAN_DEFAULTS = {
+    starter:      { max_users: 5,   max_leads: 500,   max_sequences: 3,  email: true, whatsapp: false, bulk_import: false, analytics: false },
+    professional: { max_users: 25,  max_leads: 5000,  max_sequences: 15, email: true, whatsapp: true,  bulk_import: true,  analytics: true  },
+    enterprise:   { max_users: 999, max_leads: 99999, max_sequences: 99, email: true, whatsapp: true,  bulk_import: true,  analytics: true  },
+  };
+  const [planLimits, setPlanLimits] = useState(PLAN_DEFAULTS);
+
+  // ── Platform Defaults state ─────────────────────────────────────────────────
+  const SEND_DAYS = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
+  const [platformDefaults, setPlatformDefaults] = useState({
+    cold_interval_days: 5,
+    stale_reengagement_days: 14,
+    call_failure_threshold: 6,
+    send_window_start: "09:00",
+    send_window_end: "18:00",
+    allowed_send_days: ["Monday","Tuesday","Wednesday","Thursday","Friday"] as string[],
+  });
+
+  // ── Global Emergency Controls state ────────────────────────────────────────
+  const [globalControls, setGlobalControls] = useState({
+    platform_paused: false,
+    maintenance_mode: false,
+    announcement: "",
+    announcement_active: false,
+  });
+
+  const setPlan = (plan: keyof typeof planLimits, key: string, val: any) =>
+    setPlanLimits((p) => ({ ...p, [plan]: { ...p[plan], [key]: val } }));
+
+  const toggleSendDay = (day: string) =>
+    setPlatformDefaults((d) => ({
+      ...d,
+      allowed_send_days: d.allowed_send_days.includes(day)
+        ? d.allowed_send_days.filter((x) => x !== day)
+        : [...d.allowed_send_days, day],
+    }));
+
+  const planColors: Record<string, string> = {
+    starter: "bg-gray-100 text-gray-700",
+    professional: "bg-blue-100 text-blue-700",
+    enterprise: "bg-purple-100 text-purple-700",
+  };
+  const verticalLabels: Record<string, string> = {
+    education: "Education", real_estate: "Real Estate", construction: "Construction",
+    saas: "SaaS", ecommerce: "E-commerce", manufacturing: "Manufacturing", general: "General",
+  };
+
   return (
     <div className="space-y-6">
-      <div>
-        <div className="flex items-center gap-3">
-          <Shield className="w-7 h-7 text-purple-600" />
-          <h1 className="text-2xl font-bold text-gray-900">Platform Settings</h1>
-          <span className="px-2 py-1 text-xs font-semibold text-purple-700 bg-purple-50 rounded">SUPER ADMIN</span>
-        </div>
-        <p className="text-gray-500 mt-1">Manage tenants, monitor system health, and configure platform-wide defaults.</p>
-      </div>
-
-      <div className="grid grid-cols-4 gap-4">
-        {[
-          { label: "Tenants", value: overview?.totalTenants ?? 0, sub: `${overview?.activeTenants ?? 0} active`, icon: Building2, color: "text-blue-500" },
-          { label: "Users",   value: overview?.totalUsers  ?? 0, sub: "",                                          icon: Users,    color: "text-indigo-500" },
-          { label: "Leads",   value: overview?.totalLeads  ?? 0, sub: "",                                          icon: Database, color: "text-emerald-500" },
-          { label: "System",  value: health?.database?.status || "—", sub: health?.database?.size || "", icon: Activity, color: health?.database?.status === "connected" ? "text-green-500" : "text-amber-500" },
-        ].map((s) => (
-          <div key={s.label} className="card">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs text-gray-500 uppercase tracking-wider">{s.label}</p>
-                <p className="text-2xl font-bold text-gray-900 mt-1 capitalize">{s.value}</p>
-                {s.sub && <p className="text-xs text-green-600 mt-1">{s.sub}</p>}
-              </div>
-              <s.icon className={`w-8 h-8 opacity-50 ${s.color}`} />
-            </div>
-          </div>
-        ))}
-      </div>
-
-      <div className="card">
-        <h3 className="font-semibold text-gray-900 mb-4">Management</h3>
-        <div className="grid grid-cols-2 gap-3">
+      {/* Platform stats */}
+      <div className="bg-white border border-gray-200 rounded-xl p-6">
+        <SectionHeader icon={Shield} title="Platform Overview" description="Live snapshot across all tenants on the platform." />
+        <div className="grid grid-cols-4 gap-4">
           {[
-            { to: "/admin", icon: Building2, label: "Tenant Management", desc: "Create, edit, suspend tenants", color: "bg-purple-100 text-purple-700" },
-            { to: "/admin", icon: Users,    label: "User Directory",     desc: "All users across tenants",    color: "bg-indigo-100 text-indigo-700" },
-          ].map((l) => (
-            <Link key={l.label} to={l.to} className="flex items-center justify-between p-4 rounded-lg border border-gray-200 hover:border-purple-300 hover:bg-purple-50 transition">
-              <div className="flex items-center gap-3">
-                <div className={`p-2 rounded-lg ${l.color}`}><l.icon className="w-5 h-5" /></div>
-                <div><p className="font-medium text-gray-900">{l.label}</p><p className="text-xs text-gray-500">{l.desc}</p></div>
+            { label: "Tenants",  value: overview?.total_tenants  ?? 0, sub: `${overview?.active_tenants ?? 0} active`, color: "bg-blue-50 text-blue-600",    icon: Building2 },
+            { label: "Users",    value: overview?.total_users    ?? 0, sub: "across all tenants",                      color: "bg-indigo-50 text-indigo-600", icon: Users },
+            { label: "Leads",    value: overview?.total_leads    ?? 0, sub: "platform-wide",                           color: "bg-emerald-50 text-emerald-600", icon: Database },
+            { label: "Database", value: health?.database?.status || "—", sub: health?.database?.size || "",           color: dbOk ? "bg-green-50 text-green-600" : "bg-red-50 text-red-600", icon: Activity },
+          ].map((s) => (
+            <div key={s.label} className="flex items-center gap-3 p-3 rounded-xl bg-gray-50 border border-gray-100">
+              <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${s.color}`}>
+                <s.icon className="w-4 h-4" />
               </div>
-              <ExternalLink className="w-4 h-4 text-gray-400" />
-            </Link>
+              <div>
+                <p className="text-xs text-gray-500">{s.label}</p>
+                <p className="text-base font-bold text-gray-900 capitalize">{typeof s.value === "number" ? s.value.toLocaleString() : s.value}</p>
+                <p className="text-xs text-gray-400">{s.sub}</p>
+              </div>
+            </div>
           ))}
         </div>
       </div>
 
-      {health && (
-        <div className="card">
-          <h3 className="font-semibold text-gray-900 mb-4">System Health</h3>
-          <div className="grid grid-cols-3 gap-4 text-sm">
-            <div><p className="text-gray-500 text-xs">Database</p><p className={`font-medium capitalize ${health.database?.status === "connected" ? "text-green-600" : "text-red-600"}`}>{health.database?.status}</p></div>
-            <div><p className="text-gray-500 text-xs">DB Size</p><p className="font-medium text-gray-900">{health.database?.size || "—"}</p></div>
-            <div><p className="text-gray-500 text-xs">Server Time</p><p className="font-medium text-gray-900">{health.timestamp ? formatDate(health.timestamp) : "—"}</p></div>
+      {/* Tenant list */}
+      <div className="bg-white border border-gray-200 rounded-xl p-6">
+        <div className="flex items-start gap-3 pb-4 border-b border-gray-100 mb-6">
+          <div className="w-9 h-9 rounded-lg bg-brand-50 flex items-center justify-center flex-shrink-0">
+            <Building2 className="w-5 h-5 text-brand-600" />
+          </div>
+          <div className="flex-1">
+            <h2 className="text-base font-bold text-gray-900">Tenants</h2>
+            <p className="text-sm text-gray-500 mt-0.5">Create, configure and manage all organisations on the platform.</p>
+          </div>
+          <button
+            onClick={() => setShowCreate(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-brand-600 text-white rounded-lg text-sm font-medium hover:bg-brand-700 transition-colors"
+          >
+            <Plus className="w-4 h-4" /> New Tenant
+          </button>
+        </div>
+
+        <div className="space-y-2">
+          {tenants.map((t: any) => (
+            <div key={t.id} className="flex items-center justify-between px-4 py-3 rounded-xl border border-gray-100 hover:bg-gray-50 transition-colors">
+              <div className="flex items-center gap-3 flex-1 min-w-0">
+                <div className="w-9 h-9 rounded-lg bg-brand-50 border border-brand-100 flex items-center justify-center flex-shrink-0">
+                  <span className="text-sm font-bold text-brand-600">{t.name?.[0]?.toUpperCase()}</span>
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-gray-900 truncate">{t.name}</p>
+                  <p className="text-xs text-gray-400">@{t.subdomain} · {verticalLabels[t.vertical_type] || t.vertical_type}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-4 mx-4">
+                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${planColors[t.plan_tier] || "bg-gray-100 text-gray-700"}`}>
+                  {t.plan_tier}
+                </span>
+                <div className="text-center w-10">
+                  <p className="text-sm font-semibold text-gray-900">{t.user_count ?? 0}</p>
+                  <p className="text-xs text-gray-400">users</p>
+                </div>
+                <div className="text-center w-10">
+                  <p className="text-sm font-semibold text-gray-900">{t.lead_count ?? 0}</p>
+                  <p className="text-xs text-gray-400">leads</p>
+                </div>
+                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${t.is_active ? "bg-green-100 text-green-700" : "bg-red-100 text-red-600"}`}>
+                  {t.is_active ? "Active" : "Inactive"}
+                </span>
+              </div>
+              <div className="flex items-center gap-1">
+                <button onClick={() => openEdit(t)} className="p-1.5 hover:bg-brand-50 rounded-lg transition-colors" title="Edit">
+                  <Edit2 className="w-4 h-4 text-brand-500" />
+                </button>
+                <button
+                  onClick={() => toggleMutation.mutate(t.id)}
+                  className={`p-1.5 rounded-lg transition-colors ${t.is_active ? "hover:bg-amber-50" : "hover:bg-green-50"}`}
+                  title={t.is_active ? "Deactivate" : "Activate"}
+                >
+                  <Power className={`w-4 h-4 ${t.is_active ? "text-amber-500" : "text-green-500"}`} />
+                </button>
+                <button
+                  onClick={() => { if (confirm(`Delete "${t.name}"? This cannot be undone.`)) deleteMutation.mutate(t.id); }}
+                  className="p-1.5 hover:bg-red-50 rounded-lg transition-colors"
+                  title="Delete"
+                >
+                  <Trash2 className="w-4 h-4 text-red-400" />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* ── Plan Limits ── */}
+      <div className="bg-white border border-gray-200 rounded-xl p-6">
+        <SectionHeader
+          icon={Layers}
+          title="Plan Limits"
+          description="Define feature caps and channel access for each plan tier. Applied to all tenants on that plan."
+        />
+        <div className="grid grid-cols-3 gap-4 mb-5">
+          {(["starter", "professional", "enterprise"] as const).map((plan) => {
+            const accent =
+              plan === "enterprise" ? { border: "border-purple-200", bg: "bg-purple-50", text: "text-purple-600", badge: "bg-purple-100 text-purple-700" }
+              : plan === "professional" ? { border: "border-blue-200", bg: "bg-blue-50", text: "text-blue-600", badge: "bg-blue-100 text-blue-700" }
+              : { border: "border-gray-200", bg: "bg-gray-50", text: "text-gray-500", badge: "bg-gray-100 text-gray-600" };
+            const lim = planLimits[plan];
+            return (
+              <div key={plan} className={`rounded-xl border ${accent.border} ${accent.bg} p-4`}>
+                <span className={`text-xs font-bold uppercase tracking-widest ${accent.text} block mb-4`}>{plan}</span>
+                <div className="space-y-3 mb-4">
+                  {[
+                    { key: "max_users",     label: "Max Users",     max: 9999 },
+                    { key: "max_leads",     label: "Max Leads",     max: 999999 },
+                    { key: "max_sequences", label: "Max Sequences", max: 999 },
+                  ].map(({ key, label, max }) => (
+                    <Field key={key} label={label}>
+                      <input
+                        type="number" min={1} max={max}
+                        value={(lim as any)[key]}
+                        onChange={(e) => setPlan(plan, key, +e.target.value)}
+                        className="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-500"
+                      />
+                    </Field>
+                  ))}
+                </div>
+                <div className="pt-3 border-t border-gray-200 space-y-2.5">
+                  {[
+                    { key: "email",       label: "Email Outreach" },
+                    { key: "whatsapp",    label: "WhatsApp" },
+                    { key: "bulk_import", label: "Bulk Import" },
+                    { key: "analytics",   label: "Analytics" },
+                  ].map(({ key, label }) => (
+                    <div key={key} className="flex items-center justify-between">
+                      <span className="text-xs text-gray-600">{label}</span>
+                      <Toggle
+                        checked={(lim as any)[key]}
+                        onChange={(v) => setPlan(plan, key, v)}
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        <div className="flex justify-end">
+          <button
+            onClick={() => toast.success("Plan limits saved.")}
+            className="flex items-center gap-2 px-4 py-2 bg-brand-600 text-white rounded-lg text-sm font-medium hover:bg-brand-700 transition-colors"
+          >
+            <Save className="w-4 h-4" /> Save Plan Limits
+          </button>
+        </div>
+      </div>
+
+      {/* ── Platform Defaults ── */}
+      <div className="bg-white border border-gray-200 rounded-xl p-6">
+        <SectionHeader
+          icon={SlidersHorizontal}
+          title="Platform Defaults"
+          description="Default nurturing settings applied to every new tenant at creation. Tenant admins can override these in their own settings."
+        />
+        <div className="grid grid-cols-3 gap-4 mb-5">
+          <Field label="Cold Interval (days)" hint="Days between automated outreach to COLD leads">
+            <input
+              type="number" min={1} max={30}
+              value={platformDefaults.cold_interval_days}
+              onChange={(e) => setPlatformDefaults({ ...platformDefaults, cold_interval_days: +e.target.value })}
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+            />
+          </Field>
+          <Field label="Re-engagement (days)" hint="Re-engage STALE leads after N days">
+            <input
+              type="number" min={7} max={90}
+              value={platformDefaults.stale_reengagement_days}
+              onChange={(e) => setPlatformDefaults({ ...platformDefaults, stale_reengagement_days: +e.target.value })}
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+            />
+          </Field>
+          <Field label="Call Failure Threshold" hint="Mark lead FAILED after N missed calls">
+            <input
+              type="number" min={1} max={20}
+              value={platformDefaults.call_failure_threshold}
+              onChange={(e) => setPlatformDefaults({ ...platformDefaults, call_failure_threshold: +e.target.value })}
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+            />
+          </Field>
+          <Field label="Send Window Opens">
+            <input
+              type="time" value={platformDefaults.send_window_start}
+              onChange={(e) => setPlatformDefaults({ ...platformDefaults, send_window_start: e.target.value })}
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+            />
+          </Field>
+          <Field label="Send Window Closes">
+            <input
+              type="time" value={platformDefaults.send_window_end}
+              onChange={(e) => setPlatformDefaults({ ...platformDefaults, send_window_end: e.target.value })}
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+            />
+          </Field>
+        </div>
+        <Field label="Default Active Send Days" hint="Outreach runs only on these days">
+          <div className="flex flex-wrap gap-2 mt-1">
+            {SEND_DAYS.map((day) => {
+              const active = platformDefaults.allowed_send_days.includes(day);
+              return (
+                <button key={day} type="button" onClick={() => toggleSendDay(day)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${active ? "bg-brand-600 text-white border-brand-600" : "bg-white text-gray-600 border-gray-200 hover:border-brand-400"}`}>
+                  {day.slice(0, 3)}
+                </button>
+              );
+            })}
+          </div>
+        </Field>
+        <div className="flex justify-end mt-5">
+          <button
+            onClick={() => toast.success("Platform defaults saved.")}
+            className="flex items-center gap-2 px-4 py-2 bg-brand-600 text-white rounded-lg text-sm font-medium hover:bg-brand-700 transition-colors"
+          >
+            <Save className="w-4 h-4" /> Save Defaults
+          </button>
+        </div>
+      </div>
+
+      {/* ── Global Emergency Controls ── */}
+      <div className="bg-white border border-gray-200 rounded-xl p-6">
+        <SectionHeader
+          icon={AlertOctagon}
+          title="Global Emergency Controls"
+          description="Platform-wide switches and broadcast tools. Use with care — these affect all tenants instantly."
+        />
+
+        {/* Warning banner when anything is active */}
+        {(globalControls.platform_paused || globalControls.maintenance_mode) && (
+          <div className="flex items-center gap-3 px-4 py-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-800 mb-5">
+            <AlertOctagon className="w-4 h-4 text-red-500 flex-shrink-0" />
+            <span>
+              {globalControls.platform_paused && <strong>Platform outreach is paused.</strong>}
+              {globalControls.platform_paused && globalControls.maintenance_mode && " "}
+              {globalControls.maintenance_mode && <strong>Maintenance mode is active.</strong>}
+              {" "}All affected tenants see a notice on login.
+            </span>
+          </div>
+        )}
+
+        <div className="space-y-3 mb-6">
+          <div className="flex items-center justify-between p-4 rounded-xl border border-gray-200 bg-gray-50">
+            <div>
+              <p className="text-sm font-medium text-gray-900">Pause All Outreach (Platform-wide)</p>
+              <p className="text-xs text-gray-500 mt-0.5">Stops all sequences, emails, and WhatsApp messages across every tenant. Manual calls still work.</p>
+            </div>
+            <Toggle
+              checked={globalControls.platform_paused}
+              onChange={(v) => setGlobalControls({ ...globalControls, platform_paused: v })}
+            />
+          </div>
+          <div className="flex items-center justify-between p-4 rounded-xl border border-gray-200 bg-gray-50">
+            <div>
+              <p className="text-sm font-medium text-gray-900">Maintenance Mode</p>
+              <p className="text-xs text-gray-500 mt-0.5">Shows a maintenance banner to all users. New logins are blocked; active sessions are preserved.</p>
+            </div>
+            <Toggle
+              checked={globalControls.maintenance_mode}
+              onChange={(v) => setGlobalControls({ ...globalControls, maintenance_mode: v })}
+            />
           </div>
         </div>
-      )}
 
-      {analytics?.tenants?.length > 0 && (
-        <div className="card">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="font-semibold text-gray-900">Tenant Snapshot</h3>
-            <Link to="/admin" className="text-sm text-purple-600 hover:underline flex items-center gap-1">Manage all <ExternalLink className="w-3 h-3" /></Link>
+        {/* Broadcast announcement */}
+        <div className="border border-gray-200 rounded-xl p-4 space-y-3">
+          <div className="flex items-center gap-2 mb-1">
+            <Megaphone className="w-4 h-4 text-brand-500" />
+            <p className="text-sm font-medium text-gray-900">Broadcast Announcement</p>
+            <div className="ml-auto">
+              <Toggle
+                checked={globalControls.announcement_active}
+                onChange={(v) => setGlobalControls({ ...globalControls, announcement_active: v })}
+              />
+            </div>
           </div>
-          <table className="min-w-full text-sm">
-            <thead className="text-xs text-gray-500 uppercase">
-              <tr>
-                <th className="text-left py-2">Name</th><th className="text-left py-2">Plan</th>
-                <th className="text-right py-2">Users</th><th className="text-right py-2">Leads</th><th className="text-left py-2">Status</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {analytics.tenants.slice(0, 8).map((t: any) => (
-                <tr key={t.id}>
-                  <td className="py-2 font-medium text-gray-900">{t.name}</td>
-                  <td className="py-2 capitalize text-gray-700">{t.plan_tier || "—"}</td>
-                  <td className="py-2 text-right text-gray-700">{t.user_count ?? 0}</td>
-                  <td className="py-2 text-right text-gray-700">{t.lead_count ?? 0}</td>
-                  <td className="py-2"><span className={`px-2 py-0.5 text-xs rounded ${t.is_active ? "bg-green-50 text-green-700" : "bg-gray-100 text-gray-500"}`}>{t.is_active ? "active" : "suspended"}</span></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <p className="text-xs text-gray-500">When active, this message is shown as a banner to all tenant admins when they log in.</p>
+          <textarea
+            value={globalControls.announcement}
+            onChange={(e) => setGlobalControls({ ...globalControls, announcement: e.target.value })}
+            rows={3}
+            placeholder="e.g. Scheduled maintenance on Sunday 2am–4am UTC. WhatsApp sending will be unavailable during this window."
+            disabled={!globalControls.announcement_active}
+            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 resize-none disabled:opacity-40 disabled:cursor-not-allowed"
+          />
+          {globalControls.announcement_active && globalControls.announcement && (
+            <div className="flex items-start gap-2 px-3 py-2.5 bg-amber-50 border border-amber-200 rounded-lg">
+              <Megaphone className="w-3.5 h-3.5 text-amber-500 mt-0.5 flex-shrink-0" />
+              <p className="text-xs text-amber-800">{globalControls.announcement}</p>
+            </div>
+          )}
+        </div>
+
+        <div className="flex justify-end mt-5">
+          <button
+            onClick={() => toast.success("Global controls updated.")}
+            className="flex items-center gap-2 px-4 py-2 bg-brand-600 text-white rounded-lg text-sm font-medium hover:bg-brand-700 transition-colors"
+          >
+            <Save className="w-4 h-4" /> Apply Controls
+          </button>
+        </div>
+      </div>
+
+      {/* Create Tenant Modal */}
+      <Modal isOpen={showCreate} onClose={() => setShowCreate(false)} title="Create New Tenant" size="xl">
+        <div className="space-y-4">
+          <p className="text-sm text-gray-500">Set up a new organisation on the platform.</p>
+          <div className="grid grid-cols-2 gap-4">
+            <Field label="Tenant Name">
+              <input value={createForm.name} onChange={(e) => setCreateForm({ ...createForm, name: e.target.value })} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" placeholder="Acme Corp" />
+            </Field>
+            <Field label="Subdomain" hint="Lowercase letters, numbers, hyphens only.">
+              <input value={createForm.subdomain} onChange={(e) => setCreateForm({ ...createForm, subdomain: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "") })} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" placeholder="acme" />
+            </Field>
+            <Field label="Industry / Vertical">
+              <select value={createForm.vertical_type} onChange={(e) => setCreateForm({ ...createForm, vertical_type: e.target.value })} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500">
+                <option value="general">General</option><option value="education">Education</option>
+                <option value="real_estate">Real Estate</option><option value="construction">Construction</option>
+                <option value="saas">SaaS</option><option value="ecommerce">E-commerce</option>
+                <option value="manufacturing">Manufacturing</option>
+              </select>
+            </Field>
+            <Field label="Plan Tier">
+              <select value={createForm.plan_tier} onChange={(e) => setCreateForm({ ...createForm, plan_tier: e.target.value })} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500">
+                <option value="starter">Starter</option><option value="professional">Professional</option><option value="enterprise">Enterprise</option>
+              </select>
+            </Field>
+          </div>
+          <hr className="border-gray-100" />
+          <p className="text-sm font-medium text-gray-700">Admin User</p>
+          <div className="grid grid-cols-2 gap-4">
+            <Field label="First Name">
+              <input value={createForm.admin_first_name} onChange={(e) => setCreateForm({ ...createForm, admin_first_name: e.target.value })} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
+            </Field>
+            <Field label="Last Name">
+              <input value={createForm.admin_last_name} onChange={(e) => setCreateForm({ ...createForm, admin_last_name: e.target.value })} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
+            </Field>
+            <Field label="Admin Email">
+              <input type="email" value={createForm.admin_email} onChange={(e) => setCreateForm({ ...createForm, admin_email: e.target.value })} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
+            </Field>
+            <Field label="Password">
+              <input type="password" value={createForm.admin_password} onChange={(e) => setCreateForm({ ...createForm, admin_password: e.target.value })} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
+            </Field>
+          </div>
+          <div className="flex justify-end gap-3 pt-2">
+            <button onClick={() => setShowCreate(false)} className="px-4 py-2 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50">Cancel</button>
+            <button onClick={() => createMutation.mutate(createForm)} disabled={createMutation.isPending} className="flex items-center gap-2 px-4 py-2 bg-brand-600 text-white rounded-lg text-sm font-medium hover:bg-brand-700 disabled:opacity-50">
+              <Plus className="w-4 h-4" />{createMutation.isPending ? "Creating…" : "Create Tenant"}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Edit Tenant Modal */}
+      <Modal isOpen={!!editingTenant} onClose={() => setEditingTenant(null)} title={`Edit — ${editingTenant?.name || ""}`} size="xl">
+        <div className="space-y-5">
+          <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
+            {(["company", "contact", "branding"] as const).map((t) => (
+              <button key={t} onClick={() => setEditTab(t)} className={`flex-1 py-2 text-sm font-medium rounded-lg transition-all capitalize ${editTab === t ? "bg-white shadow text-gray-900" : "text-gray-500 hover:text-gray-700"}`}>
+                {t}
+              </button>
+            ))}
+          </div>
+
+          {editTab === "company" && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <Field label="Company Name">
+                  <input value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
+                </Field>
+                <Field label="Subdomain">
+                  <input value={editForm.subdomain} onChange={(e) => setEditForm({ ...editForm, subdomain: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "") })} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
+                </Field>
+                <Field label="Industry">
+                  <select value={editForm.vertical_type} onChange={(e) => setEditForm({ ...editForm, vertical_type: e.target.value })} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500">
+                    <option value="general">General</option><option value="education">Education</option>
+                    <option value="real_estate">Real Estate</option><option value="construction">Construction</option>
+                    <option value="saas">SaaS</option><option value="ecommerce">E-commerce</option><option value="manufacturing">Manufacturing</option>
+                  </select>
+                </Field>
+                <Field label="Plan Tier">
+                  <select value={editForm.plan_tier} onChange={(e) => setEditForm({ ...editForm, plan_tier: e.target.value })} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500">
+                    <option value="starter">Starter</option><option value="professional">Professional</option><option value="enterprise">Enterprise</option>
+                  </select>
+                </Field>
+                <Field label="Company Size">
+                  <select value={editForm.company_size} onChange={(e) => setEditForm({ ...editForm, company_size: e.target.value })} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500">
+                    <option value="">Select…</option><option value="1-10">1–10</option><option value="11-50">11–50</option>
+                    <option value="51-200">51–200</option><option value="201-500">201–500</option><option value="500+">500+</option>
+                  </select>
+                </Field>
+                <Field label="Founded Year">
+                  <input value={editForm.founded_year} onChange={(e) => setEditForm({ ...editForm, founded_year: e.target.value })} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" placeholder="2020" maxLength={4} />
+                </Field>
+              </div>
+              <Field label="Description">
+                <textarea value={editForm.description} onChange={(e) => setEditForm({ ...editForm, description: e.target.value })} rows={2} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 resize-none" />
+              </Field>
+              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-xl border border-gray-100">
+                <div>
+                  <p className="text-sm font-medium text-gray-900">Account Active</p>
+                  <p className="text-xs text-gray-400">Inactive tenants cannot log in</p>
+                </div>
+                <Toggle checked={editForm.is_active} onChange={(v) => setEditForm({ ...editForm, is_active: v })} />
+              </div>
+            </div>
+          )}
+
+          {editTab === "contact" && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <Field label="Contact Email">
+                  <input type="email" value={editForm.contact_email} onChange={(e) => setEditForm({ ...editForm, contact_email: e.target.value })} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" placeholder="hello@company.com" />
+                </Field>
+                <Field label="Contact Phone">
+                  <input value={editForm.contact_phone} onChange={(e) => setEditForm({ ...editForm, contact_phone: e.target.value })} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" placeholder="+91 XXXXXXXXXX" />
+                </Field>
+                <Field label="Website" hint="">
+                  <input value={editForm.website} onChange={(e) => setEditForm({ ...editForm, website: e.target.value })} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" placeholder="https://company.com" />
+                </Field>
+                <Field label="City">
+                  <input value={editForm.city} onChange={(e) => setEditForm({ ...editForm, city: e.target.value })} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
+                </Field>
+                <Field label="State">
+                  <input value={editForm.state} onChange={(e) => setEditForm({ ...editForm, state: e.target.value })} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
+                </Field>
+                <Field label="Country">
+                  <input value={editForm.country} onChange={(e) => setEditForm({ ...editForm, country: e.target.value })} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
+                </Field>
+              </div>
+            </div>
+          )}
+
+          {editTab === "branding" && (
+            <div className="space-y-4">
+              <Field label="Tagline">
+                <input value={editForm.tagline} onChange={(e) => setEditForm({ ...editForm, tagline: e.target.value })} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" placeholder="Empowering your growth" />
+              </Field>
+              <Field label="Logo URL">
+                <input value={editForm.logo_url} onChange={(e) => setEditForm({ ...editForm, logo_url: e.target.value })} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" placeholder="https://cdn.company.com/logo.png" />
+              </Field>
+              <Field label="Primary Brand Color">
+                <div className="flex items-center gap-3">
+                  <input type="color" value={editForm.primary_color} onChange={(e) => setEditForm({ ...editForm, primary_color: e.target.value })} className="w-10 h-10 rounded-lg border border-gray-200 cursor-pointer p-0.5" />
+                  <input value={editForm.primary_color} onChange={(e) => setEditForm({ ...editForm, primary_color: e.target.value })} className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-brand-500" maxLength={7} />
+                  <div className="w-10 h-10 rounded-lg border border-gray-200 flex-shrink-0" style={{ backgroundColor: editForm.primary_color }} />
+                </div>
+              </Field>
+            </div>
+          )}
+
+          <div className="flex justify-between items-center pt-2 border-t border-gray-100">
+            <p className="text-xs text-gray-400 font-mono">{editingTenant?.id}</p>
+            <div className="flex gap-3">
+              <button onClick={() => setEditingTenant(null)} className="px-4 py-2 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50">Cancel</button>
+              <button onClick={handleUpdate} disabled={updateMutation.isPending} className="flex items-center gap-2 px-4 py-2 bg-brand-600 text-white rounded-lg text-sm font-medium hover:bg-brand-700 disabled:opacity-50">
+                <Save className="w-4 h-4" />{updateMutation.isPending ? "Saving…" : "Save Changes"}
+              </button>
+            </div>
+          </div>
+        </div>
+      </Modal>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// Super Admin view — settings-style layout (kept as reference, no longer rendered)
+// ════════════════════════════════════════════════════════════════════════════
+function SuperAdminView({ analytics, health }: { analytics: any; health: any }) {
+  const overview = analytics?.overview;
+  const tenants: any[] = analytics?.tenants || [];
+  const dbOk = health?.database?.status === "connected";
+
+  return (
+    <div className="space-y-6">
+      {/* Platform overview */}
+      <div className="bg-white border border-gray-200 rounded-xl p-6">
+        <SectionHeader
+          icon={Shield}
+          title="Platform Overview"
+          description="Real-time snapshot of tenants, users, leads, and system health across the entire platform."
+        />
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          {[
+            { label: "Total Tenants",  value: overview?.total_tenants ?? 0,  sub: `${overview?.active_tenants ?? 0} active`,  icon: Building2, color: "bg-blue-50 text-blue-600" },
+            { label: "Total Users",    value: overview?.total_users   ?? 0,  sub: "across all tenants",                        icon: Users,     color: "bg-indigo-50 text-indigo-600" },
+            { label: "Total Leads",    value: overview?.total_leads   ?? 0,  sub: "platform-wide",                             icon: Database,  color: "bg-emerald-50 text-emerald-600" },
+            { label: "Outreach Sent",  value: overview?.total_outreach ?? 0, sub: `${overview?.total_events ?? 0} events`,    icon: Activity,  color: "bg-amber-50 text-amber-600" },
+          ].map((s) => (
+            <div key={s.label} className="flex items-center gap-3 p-4 rounded-xl border border-gray-100 bg-gray-50">
+              <div className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${s.color}`}>
+                <s.icon className="w-5 h-5" />
+              </div>
+              <div>
+                <p className="text-xs text-gray-500">{s.label}</p>
+                <p className="text-xl font-bold text-gray-900">{s.value.toLocaleString()}</p>
+                <p className="text-xs text-gray-400">{s.sub}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* System health */}
+      <div className="bg-white border border-gray-200 rounded-xl p-6">
+        <SectionHeader
+          icon={Activity}
+          title="System Health"
+          description="Live database connectivity and storage metrics."
+        />
+        <div className="grid grid-cols-3 gap-4">
+          <div className="p-4 rounded-xl border border-gray-100 bg-gray-50">
+            <p className="text-xs text-gray-500 mb-1">Database</p>
+            <p className={`text-sm font-semibold capitalize flex items-center gap-1.5 ${dbOk ? "text-green-600" : "text-red-600"}`}>
+              <span className={`w-2 h-2 rounded-full ${dbOk ? "bg-green-500" : "bg-red-500"}`} />
+              {health?.database?.status || "—"}
+            </p>
+          </div>
+          <div className="p-4 rounded-xl border border-gray-100 bg-gray-50">
+            <p className="text-xs text-gray-500 mb-1">DB Size</p>
+            <p className="text-sm font-semibold text-gray-900">{health?.database?.size || "—"}</p>
+          </div>
+          <div className="p-4 rounded-xl border border-gray-100 bg-gray-50">
+            <p className="text-xs text-gray-500 mb-1">Last Checked</p>
+            <p className="text-sm font-semibold text-gray-900">{health?.timestamp ? formatDate(health.timestamp) : "—"}</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Tenant snapshot */}
+      {tenants.length > 0 && (
+        <div className="bg-white border border-gray-200 rounded-xl p-6">
+          <SectionHeader
+            icon={Building2}
+            title="Tenant Snapshot"
+            description="Quick view of all organisations. Go to the Super Admin panel for full management."
+          />
+          <div className="space-y-2">
+            {tenants.slice(0, 8).map((t: any) => (
+              <div key={t.id} className="flex items-center justify-between px-4 py-3 rounded-xl border border-gray-100 bg-gray-50 hover:bg-gray-100 transition-colors">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-white border border-gray-200 flex items-center justify-center flex-shrink-0">
+                    <Building2 className="w-4 h-4 text-gray-400" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-gray-900">{t.name}</p>
+                    <p className="text-xs text-gray-500 capitalize">{t.vertical_type} · {t.plan_tier}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-6 text-sm">
+                  <div className="text-center">
+                    <p className="font-semibold text-gray-900">{t.user_count ?? 0}</p>
+                    <p className="text-xs text-gray-400">Users</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="font-semibold text-gray-900">{t.lead_count ?? 0}</p>
+                    <p className="text-xs text-gray-400">Leads</p>
+                  </div>
+                  <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${t.is_active ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
+                    {t.is_active ? "Active" : "Suspended"}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+          {tenants.length > 8 && (
+            <p className="text-xs text-gray-400 mt-3 text-center">+{tenants.length - 8} more tenants — view all in Super Admin panel</p>
+          )}
+          <div className="mt-4 pt-4 border-t border-gray-100">
+            <Link
+              to="/admin"
+              className="flex items-center justify-center gap-2 w-full py-2 text-sm font-medium text-brand-600 hover:text-brand-700 hover:bg-brand-50 rounded-lg transition-colors"
+            >
+              <Building2 className="w-4 h-4" />
+              Open Super Admin Panel
+              <ExternalLink className="w-3.5 h-3.5" />
+            </Link>
+          </div>
         </div>
       )}
     </div>
