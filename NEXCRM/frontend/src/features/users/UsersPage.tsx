@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "../../services/api";
 import toast from "react-hot-toast";
-import { UserPlus, Edit2, Ban, CheckCircle } from "lucide-react";
+import { UserPlus, Edit2, Ban, CheckCircle, Search, X } from "lucide-react";
 import { useAuthStore } from "../../store/authStore";
 
 export default function UsersPage() {
@@ -11,6 +11,7 @@ export default function UsersPage() {
   const isSuperAdmin = currentUser?.role === "super_admin";
   const [showCreate, setShowCreate] = useState(false);
   const [editUser, setEditUser] = useState<any>(null);
+  const [search, setSearch] = useState("");
   const [form, setForm] = useState({
     first_name: "",
     last_name: "",
@@ -80,6 +81,19 @@ export default function UsersPage() {
     });
   };
 
+  const filteredUsers = (users || []).filter((u: any) => {
+    if (!search.trim()) return true;
+    const q = search.toLowerCase();
+    return (
+      `${u.first_name} ${u.last_name}`.toLowerCase().includes(q) ||
+      (u.email || "").toLowerCase().includes(q) ||
+      (u.phone || "").toLowerCase().includes(q) ||
+      (u.territory || "").toLowerCase().includes(q) ||
+      (u.role || "").toLowerCase().includes(q) ||
+      (u.tenant?.name || "").toLowerCase().includes(q)
+    );
+  });
+
   const roleLabels: Record<string, string> = {
     super_admin: "Super Admin",
     tenant_admin: "Tenant Admin",
@@ -99,19 +113,31 @@ export default function UsersPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Users & Reps</h1>
-          <p className="text-gray-500 mt-1">
-            Manage team members and sales representatives
-          </p>
+          <p className="text-gray-500 mt-1">Manage team members and sales representatives</p>
         </div>
-        <button
-          onClick={() => setShowCreate(true)}
-          className="btn-primary flex items-center gap-2"
-        >
-          <UserPlus className="w-4 h-4" /> Add User
-        </button>
+        <div className="flex items-center gap-3 ml-auto">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+            <input
+              type="text"
+              placeholder="Search by name, email, role…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-9 pr-8 py-2 w-64 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 bg-white"
+            />
+            {search && (
+              <button onClick={() => setSearch("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+          <button onClick={() => setShowCreate(true)} className="btn-primary flex items-center gap-2">
+            <UserPlus className="w-4 h-4" /> Add User
+          </button>
+        </div>
       </div>
 
       {showCreate && (
@@ -268,7 +294,14 @@ export default function UsersPage() {
               </tr>
             </thead>
             <tbody>
-              {(users || []).map((user: any) => (
+              {filteredUsers.length === 0 && (
+                <tr>
+                  <td colSpan={isSuperAdmin ? 6 : 5} className="py-10 text-center text-sm text-gray-400">
+                    No users match <span className="font-medium text-gray-600">"{search}"</span>
+                  </td>
+                </tr>
+              )}
+              {filteredUsers.map((user: any) => (
                 <tr
                   key={user.id}
                   className="border-b border-gray-100 hover:bg-gray-50"

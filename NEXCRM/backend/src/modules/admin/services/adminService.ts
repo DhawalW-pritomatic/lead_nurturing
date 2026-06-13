@@ -331,11 +331,13 @@ export class AdminService {
     }
   }
 
-  async getTenantLeads(tenantId: string, page: number = 1, limit: number = 50): Promise<any> {
+  async getTenantLeads(tenantId: string, page: number = 1, limit: number = 50, leadType?: string): Promise<any> {
     const offset = (page - 1) * limit;
+    const where: any = { tenant_id: tenantId };
+    if (leadType) where.lead_type = leadType;
 
     const { count, rows } = await Lead.findAndCountAll({
-      where: { tenant_id: tenantId },
+      where,
       include: [
         {
           model: User,
@@ -343,7 +345,11 @@ export class AdminService {
           attributes: ['id', 'first_name', 'last_name', 'email'],
         },
       ],
-      order: [['created_at', 'DESC']],
+      order: [
+        [sequelize.literal(`CASE lead_type WHEN 'HOT' THEN 1 WHEN 'WARM' THEN 2 WHEN 'COLD' THEN 3 WHEN 'STALE' THEN 4 WHEN 'CONVERTED' THEN 5 ELSE 6 END`), 'ASC'],
+        ['score', 'DESC'],
+        ['created_at', 'DESC'],
+      ],
       limit,
       offset,
     });

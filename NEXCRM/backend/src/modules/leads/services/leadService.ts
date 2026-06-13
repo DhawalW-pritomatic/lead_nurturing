@@ -97,7 +97,11 @@ export class LeadService {
     const { rows, count } = await Lead.findAndCountAll({
       where,
       include: includes,
-      order: [[sort_by, sort_order.toUpperCase()]],
+      order: [
+        [sequelize.literal(`CASE lead_type WHEN 'HOT' THEN 1 WHEN 'WARM' THEN 2 WHEN 'COLD' THEN 3 WHEN 'STALE' THEN 4 WHEN 'CONVERTED' THEN 5 ELSE 6 END`), 'ASC'],
+        ['score', 'DESC'],
+        [sort_by, sort_order.toUpperCase()],
+      ],
       limit: parseInt(limit as string),
       offset,
     });
