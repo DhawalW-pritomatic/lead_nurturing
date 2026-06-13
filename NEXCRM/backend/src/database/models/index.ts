@@ -17,6 +17,16 @@ import NurturingSettings from './NurturingSettings';
 import Notification from './Notification';
 import EmailSchedule from './EmailSchedule';
 import LeadQuery from './LeadQuery';
+<<<<<<< Updated upstream
+=======
+import TenantPhoneConfig from './TenantPhoneConfig';
+import CallRecord from './CallRecord';
+import CallbackSchedule from './CallbackSchedule';
+import Task from './Task';
+import WhatsAppMessage from './WhatsAppMessage';
+import Meeting from './Meeting';
+import RoutingLog from './RoutingLog';
+>>>>>>> Stashed changes
 
 // Tenant associations
 Tenant.hasMany(User, { foreignKey: 'tenant_id', as: 'users' });
@@ -112,6 +122,12 @@ Tenant.hasMany(LeadQuery, { foreignKey: 'tenant_id', as: 'leadQueries' });
 
 // Routing
 RoutingRule.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
+RoutingRule.hasMany(RoutingLog, { foreignKey: 'rule_id', as: 'logs' });
+
+// RoutingLog
+RoutingLog.belongsTo(RoutingRule, { foreignKey: 'rule_id', as: 'rule' });
+RoutingLog.belongsTo(Lead, { foreignKey: 'lead_id', as: 'lead' });
+RoutingLog.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
 
 // AuditLog
 AuditLog.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
@@ -137,4 +153,14 @@ export {
   Notification,
   EmailSchedule,
   LeadQuery,
+<<<<<<< Updated upstream
+=======
+  TenantPhoneConfig,
+  CallRecord,
+  CallbackSchedule,
+  Task,
+  WhatsAppMessage,
+  Meeting,
+  RoutingLog,
+>>>>>>> Stashed changes
 };

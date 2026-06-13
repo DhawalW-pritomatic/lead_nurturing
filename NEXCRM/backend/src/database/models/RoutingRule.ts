@@ -5,24 +5,28 @@ interface RoutingRuleAttributes {
   id: string;
   tenant_id: string;
   name: string;
+  description?: string;
   condition_expression: object;
   action_config: object;
   priority: number;
   is_active: boolean;
+  match_count: number;
   created_at?: Date;
   updated_at?: Date;
 }
 
-interface RoutingRuleCreationAttributes extends Optional<RoutingRuleAttributes, 'id' | 'is_active'> {}
+interface RoutingRuleCreationAttributes extends Optional<RoutingRuleAttributes, 'id' | 'is_active' | 'match_count' | 'description'> {}
 
 class RoutingRule extends Model<RoutingRuleAttributes, RoutingRuleCreationAttributes> implements RoutingRuleAttributes {
   public id!: string;
   public tenant_id!: string;
   public name!: string;
+  public description!: string;
   public condition_expression!: object;
   public action_config!: object;
   public priority!: number;
   public is_active!: boolean;
+  public match_count!: number;
   public readonly created_at!: Date;
   public readonly updated_at!: Date;
 }
@@ -32,10 +36,12 @@ RoutingRule.init(
     id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
     tenant_id: { type: DataTypes.UUID, allowNull: false },
     name: { type: DataTypes.STRING(255), allowNull: false },
+    description: { type: DataTypes.TEXT },
     condition_expression: { type: DataTypes.JSONB, allowNull: false },
     action_config: { type: DataTypes.JSONB, allowNull: false },
     priority: { type: DataTypes.INTEGER, allowNull: false },
     is_active: { type: DataTypes.BOOLEAN, defaultValue: true },
+    match_count: { type: DataTypes.INTEGER, defaultValue: 0 },
   },
   {
     sequelize,
