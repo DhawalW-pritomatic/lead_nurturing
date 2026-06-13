@@ -9,6 +9,11 @@ export default function UsersPage() {
   const queryClient = useQueryClient();
   const { user: currentUser } = useAuthStore();
   const isSuperAdmin = currentUser?.role === "super_admin";
+  const isRep = currentUser?.role === "sales_rep" || currentUser?.role === "senior_sales_rep";
+  const isAdmin = !isRep; // admin, manager, super_admin can manage others
+
+  const canEdit   = (u: any) => isAdmin || u.id === currentUser?.id;
+  const canToggle = (u: any) => isAdmin && u.id !== currentUser?.id;
   const [showCreate, setShowCreate] = useState(false);
   const [editUser, setEditUser] = useState<any>(null);
   const [search, setSearch] = useState("");
@@ -134,9 +139,11 @@ export default function UsersPage() {
               </button>
             )}
           </div>
-          <button onClick={() => setShowCreate(true)} className="btn-primary flex items-center gap-2">
-            <UserPlus className="w-4 h-4" /> Add User
-          </button>
+          {isAdmin && (
+            <button onClick={() => setShowCreate(true)} className="btn-primary flex items-center gap-2">
+              <UserPlus className="w-4 h-4" /> Add User
+            </button>
+          )}
         </div>
       </div>
 
@@ -207,7 +214,14 @@ export default function UsersPage() {
 
       {editUser && (
         <div className="card space-y-4">
-          <h3 className="font-semibold">Edit User — {editUser.first_name} {editUser.last_name}</h3>
+          <div className="flex items-center justify-between">
+            <h3 className="font-semibold">
+              {editUser.id === currentUser?.id ? "Edit My Profile" : `Edit User — ${editUser.first_name} ${editUser.last_name}`}
+            </h3>
+            {editUser.id === currentUser?.id && (
+              <span className="text-xs bg-brand-50 text-brand-600 px-2 py-0.5 rounded-full font-medium">My Profile</span>
+            )}
+          </div>
           <div className="grid grid-cols-3 gap-4">
             <input
               placeholder="First name"
@@ -230,16 +244,22 @@ export default function UsersPage() {
             />
           </div>
           <div className="grid grid-cols-3 gap-4">
-            <select
-              value={editForm.role}
-              onChange={(e) => setEditForm({ ...editForm, role: e.target.value })}
-              className="input-field"
-            >
-              <option value="sales_rep">Sales Rep</option>
-              <option value="senior_sales_rep">Senior Sales Rep</option>
-              <option value="sales_manager">Sales Manager</option>
-              <option value="tenant_admin">Tenant Admin</option>
-            </select>
+            {isAdmin ? (
+              <select
+                value={editForm.role}
+                onChange={(e) => setEditForm({ ...editForm, role: e.target.value })}
+                className="input-field"
+              >
+                <option value="sales_rep">Sales Rep</option>
+                <option value="senior_sales_rep">Senior Sales Rep</option>
+                <option value="sales_manager">Sales Manager</option>
+                <option value="tenant_admin">Tenant Admin</option>
+              </select>
+            ) : (
+              <div className="input-field bg-gray-50 text-gray-500 cursor-not-allowed select-none">
+                {roleLabels[editForm.role]}
+              </div>
+            )}
             <input
               placeholder="Phone"
               value={editForm.phone}
@@ -342,29 +362,24 @@ export default function UsersPage() {
                   </td>
                   <td className="py-3 px-4">
                     <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => openEdit(user)}
-                        className="text-gray-400 hover:text-blue-600"
-                        title="Edit user"
-                      >
-                        <Edit2 className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() =>
-                          toggleMutation.mutate({
-                            id: user.id,
-                            is_active: !user.is_active,
-                          })
-                        }
-                        className="text-gray-400 hover:text-gray-700"
-                        title={user.is_active ? "Deactivate" : "Activate"}
-                      >
-                        {user.is_active ? (
-                          <Ban className="w-4 h-4" />
-                        ) : (
-                          <CheckCircle className="w-4 h-4" />
-                        )}
-                      </button>
+                      {canEdit(user) && (
+                        <button
+                          onClick={() => openEdit(user)}
+                          className="text-gray-400 hover:text-blue-600"
+                          title={user.id === currentUser?.id ? "Edit my profile" : "Edit user"}
+                        >
+                          <Edit2 className="w-4 h-4" />
+                        </button>
+                      )}
+                      {canToggle(user) && (
+                        <button
+                          onClick={() => toggleMutation.mutate({ id: user.id, is_active: !user.is_active })}
+                          className="text-gray-400 hover:text-gray-700"
+                          title={user.is_active ? "Deactivate" : "Activate"}
+                        >
+                          {user.is_active ? <Ban className="w-4 h-4" /> : <CheckCircle className="w-4 h-4" />}
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>

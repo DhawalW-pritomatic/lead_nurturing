@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { PhoneCall, PhoneIncoming, PhoneOff, Clock, CheckCircle, X } from "lucide-react";
 import api from "../../services/api";
 import { formatDateTime } from "../../utils/dateUtils";
+import { useAuthStore } from "../../store/authStore";
 
 interface CallRecord {
   id: string;
@@ -38,6 +39,8 @@ const DISPOSITIONS = [
 
 export default function CallsPage({ embedded }: { embedded?: boolean }) {
   const qc = useQueryClient();
+  const user  = useAuthStore((s) => s.user);
+  const isRep = user?.role === "sales_rep" || user?.role === "senior_sales_rep";
   const [activeTab, setActiveTab] = useState<"history" | "callbacks">("history");
   const [dispModal, setDispModal] = useState<CallRecord | null>(null);
   const [dispForm, setDispForm] = useState({ disposition: "", notes: "", scheduled_at: "" });
@@ -58,6 +61,16 @@ export default function CallsPage({ embedded }: { embedded?: boolean }) {
     enabled: activeTab === "callbacks",
   });
 
+  // For reps: scope to their assigned leads (backend auto-scopes /leads for reps)
+  const { data: repLeadsData } = useQuery({
+    queryKey: ["leads-list-calls", user?.id],
+    queryFn: () => api.get("/leads?limit=500").then((r) => r.data?.leads || r.data),
+    enabled: isRep,
+  });
+  const myLeadIds = new Set<string>(
+    isRep ? (Array.isArray(repLeadsData) ? repLeadsData : []).map((l: any) => l.id) : []
+  );
+
   const dispMutation = useMutation({
     mutationFn: ({ id, ...data }: any) =>
       api.patch(`/calls/${id}/disposition`, data).then((r) => r.data),
@@ -75,7 +88,8 @@ export default function CallsPage({ embedded }: { embedded?: boolean }) {
   });
 
   const stats = statsData || { total: 0, completed: 0, no_answer: 0, interested: 0, not_interested: 0, callback_scheduled: 0 };
-  const records = callsData?.records || [];
+  const allRecords = callsData?.records || [];
+  const records = isRep ? allRecords.filter((c) => !c.lead || myLeadIds.has(c.lead.id)) : allRecords;
 
   return (
     <div className={embedded ? "" : "space-y-6"}>
@@ -205,7 +219,10 @@ export default function CallsPage({ embedded }: { embedded?: boolean }) {
       {/* Callbacks */}
       {activeTab === "callbacks" && (
         <div className="space-y-3">
-          {(callbacks || []).map((cb: any) => (
+          {(isRep
+            ? (callbacks || []).filter((cb: any) => !cb.lead || myLeadIds.has(cb.lead?.id))
+            : (callbacks || [])
+          ).map((cb: any) => (
             <div key={cb.id} className="bg-white border border-gray-200 rounded-xl px-4 py-3 flex items-center justify-between">
               <div>
                 <p className="text-sm font-semibold text-gray-900">
@@ -235,7 +252,10 @@ export default function CallsPage({ embedded }: { embedded?: boolean }) {
               </div>
             </div>
           ))}
-          {(!callbacks || callbacks.length === 0) && (
+          {(isRep
+            ? (callbacks || []).filter((cb: any) => !cb.lead || myLeadIds.has(cb.lead?.id))
+            : (callbacks || [])
+          ).length === 0 && (
             <p className="text-center text-gray-400 py-12 text-sm">No callbacks scheduled</p>
           )}
         </div>

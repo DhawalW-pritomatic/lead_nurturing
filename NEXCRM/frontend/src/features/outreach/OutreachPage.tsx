@@ -17,7 +17,9 @@ import {
 
 export default function OutreachPage() {
   const queryClient = useQueryClient();
-  const token = useAuthStore((s) => s.token);
+  const token  = useAuthStore((s) => s.token);
+  const user   = useAuthStore((s) => s.user);
+  const isRep  = user?.role === "sales_rep" || user?.role === "senior_sales_rep";
 
   // Real-time: refresh counts the moment a tracking pixel fires on the backend.
   // Connect directly to localhost:5000 to bypass the Vite proxy, which buffers
@@ -99,8 +101,48 @@ export default function OutreachPage() {
   const { data: leads = [] } = useQuery({
     queryKey: ["leads-list"],
     queryFn: () =>
-      api.get("/leads?limit=200").then((r) => r.data?.leads || r.data),
+      api.get("/leads?limit=500").then((r) => r.data?.leads || r.data),
   });
+
+  // For reps: build a Set of their assigned lead IDs for client-side filtering
+  const myLeadIds = new Set<string>(
+    isRep ? (Array.isArray(leads) ? leads : []).map((l: any) => l.id) : []
+  );
+
+  // Scoped outreach rows
+  const visibleOutreach: any[] = isRep
+    ? (Array.isArray(outreach) ? outreach : []).filter((o: any) => myLeadIds.has(o.lead?.id))
+    : (Array.isArray(outreach) ? outreach : []);
+
+  // Scoped query rows (status filter applied after lead filter)
+  const visibleQueryRows: any[] = isRep
+    ? (queryHistory.rows || []).filter((q: any) => myLeadIds.has(q.lead?.id))
+    : (queryHistory.rows || []);
+
+  // Compute stats from visible data for reps; use API stats for admins
+  const displayStats = isRep
+    ? (() => {
+        const total   = visibleOutreach.length;
+        const opened  = visibleOutreach.filter((o) => o.opened_at  || o.openedAt).length;
+        const clicked = visibleOutreach.filter((o) => o.clicked_at || o.clickedAt).length;
+        return {
+          total,
+          opened,
+          clicked,
+          open_rate:  total > 0 ? ((opened  / total) * 100).toFixed(1) : "0",
+          click_rate: total > 0 ? ((clicked / total) * 100).toFixed(1) : "0",
+        };
+      })()
+    : stats;
+
+  const displayQueryStats = isRep
+    ? {
+        total:                 visibleQueryRows.length,
+        pending:               visibleQueryRows.filter((q) => q.status === "pending").length,
+        answered:              visibleQueryRows.filter((q) => q.status === "answered").length,
+        inbound_email_queries: visibleQueryRows.length,
+      }
+    : queryStats;
 
   const { data: templates = [] } = useQuery({
     queryKey: ["templates"],
@@ -189,28 +231,28 @@ export default function OutreachPage() {
         <div className="card flex items-center gap-3">
           <Mail className="w-8 h-8 text-brand-600" />
           <div>
-            <p className="text-2xl font-bold">{stats.total}</p>
+            <p className="text-2xl font-bold">{displayStats.total}</p>
             <p className="text-xs text-gray-500">Total Sent</p>
           </div>
         </div>
         <div className="card flex items-center gap-3">
           <Eye className="w-8 h-8 text-green-600" />
           <div>
-            <p className="text-2xl font-bold">{stats.opened}</p>
+            <p className="text-2xl font-bold">{displayStats.opened}</p>
             <p className="text-xs text-gray-500">Opened</p>
           </div>
         </div>
         <div className="card flex items-center gap-3">
           <MousePointer className="w-8 h-8 text-blue-600" />
           <div>
-            <p className="text-2xl font-bold">{stats.clicked}</p>
+            <p className="text-2xl font-bold">{displayStats.clicked}</p>
             <p className="text-xs text-gray-500">Clicked</p>
           </div>
         </div>
         <div className="card flex items-center gap-3">
           <Clock className="w-8 h-8 text-amber-600" />
           <div>
-            <p className="text-2xl font-bold">{stats.open_rate}%</p>
+            <p className="text-2xl font-bold">{displayStats.open_rate}%</p>
             <p className="text-xs text-gray-500">Open Rate</p>
           </div>
         </div>
@@ -293,7 +335,7 @@ export default function OutreachPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
-                {outreach.slice(0, 50).map((o: any) => (
+                {visibleOutreach.slice(0, 50).map((o: any) => (
                   <tr key={o.id} className="hover:bg-gray-50">
                     <td className="table-cell font-medium">
                       {o.lead?.email || o.recipient_email || "—"}
@@ -324,7 +366,7 @@ export default function OutreachPage() {
                 ))}
               </tbody>
             </table>
-            {outreach.length === 0 && (
+            {visibleOutreach.length === 0 && (
               <p className="text-center text-gray-400 py-8">
                 No outreach records yet.
               </p>
@@ -339,26 +381,26 @@ export default function OutreachPage() {
           <MessageSquare className="w-8 h-8 text-indigo-600" />
           <div>
             <p className="text-2xl font-bold">
-              {queryStats.inbound_email_queries || 0}
+              {displayQueryStats.inbound_email_queries || 0}
             </p>
             <p className="text-xs text-gray-500">Inbound Email Queries</p>
           </div>
         </div>
         <div className="card">
           <p className="text-2xl font-bold text-gray-900">
-            {queryStats.total || 0}
+            {displayQueryStats.total || 0}
           </p>
           <p className="text-xs text-gray-500">Total Queries</p>
         </div>
         <div className="card">
           <p className="text-2xl font-bold text-amber-700">
-            {queryStats.pending || 0}
+            {displayQueryStats.pending || 0}
           </p>
           <p className="text-xs text-amber-600">Pending</p>
         </div>
         <div className="card">
           <p className="text-2xl font-bold text-green-700">
-            {queryStats.answered || 0}
+            {displayQueryStats.answered || 0}
           </p>
           <p className="text-xs text-green-600">Answered</p>
         </div>
@@ -401,7 +443,7 @@ export default function OutreachPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
-                {(queryHistory.rows || []).map((q: any) => (
+                {visibleQueryRows.map((q: any) => (
                   <tr key={q.id} className="hover:bg-gray-50">
                     <td className="table-cell font-medium">
                       {q.lead?.first_name} {q.lead?.last_name}
@@ -482,7 +524,7 @@ export default function OutreachPage() {
                 ))}
               </tbody>
             </table>
-            {(queryHistory.rows || []).length === 0 && (
+            {visibleQueryRows.length === 0 && (
               <p className="text-center text-gray-400 py-8">
                 No inbound query history found.
               </p>
