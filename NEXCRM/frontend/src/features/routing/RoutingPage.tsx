@@ -710,13 +710,6 @@ export default function RoutingPage() {
     },
   });
 
-<<<<<<< Updated upstream
-  const actionLabels: Record<string, string> = {
-    assign_senior_rep: "Assign Senior Rep",
-    assign_round_robin: "Round Robin Assignment",
-    enroll_sequence: "Enroll in Sequence",
-    mark_stale: "Mark as Stale",
-=======
   const cloneMutation = useMutation({
     mutationFn: (id: string) => api.post(`/routing/${id}/clone`).then(r => r.data),
     onSuccess: () => {
@@ -738,7 +731,6 @@ export default function RoutingPage() {
     const swapIdx = direction === "up" ? idx - 1 : idx + 1;
     [sorted[idx], sorted[swapIdx]] = [sorted[swapIdx], sorted[idx]];
     reorderMutation.mutate(sorted.map(r => r.id));
->>>>>>> Stashed changes
   };
 
   const logs: RoutingLog[] = logsData?.logs || [];
@@ -883,44 +875,6 @@ export default function RoutingPage() {
               </div>
             </div>
           </div>
-<<<<<<< Updated upstream
-          <div>
-            <label className="text-sm font-medium text-gray-700 mb-1 block">
-              Action
-            </label>
-            <select
-              value={form.action_config.action}
-              onChange={(e) =>
-                setForm({
-                  ...form,
-                  action_config: {
-                    ...form.action_config,
-                    action: e.target.value,
-                  },
-                })
-              }
-              className="input-field"
-            >
-              <option value="assign_senior_rep">Assign Senior Rep</option>
-              <option value="assign_round_robin">Round Robin</option>
-              <option value="enroll_sequence">Enroll in Sequence</option>
-              <option value="mark_stale">Mark Stale</option>
-            </select>
-          </div>
-          <div className="flex gap-3">
-            <button
-              onClick={() => createMutation.mutate(form)}
-              className="btn-primary"
-            >
-              Create Rule
-            </button>
-            <button
-              onClick={() => setShowCreate(false)}
-              className="btn-secondary"
-            >
-              Cancel
-            </button>
-=======
         ))}
       </div>
 
@@ -933,7 +887,6 @@ export default function RoutingPage() {
               Recent Routing Activity
             </h3>
             <span className="text-sm text-gray-400">{logsData?.total || 0} total events</span>
->>>>>>> Stashed changes
           </div>
 
           {logs.length === 0 ? (

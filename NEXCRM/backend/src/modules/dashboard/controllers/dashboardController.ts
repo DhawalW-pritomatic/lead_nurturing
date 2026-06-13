@@ -13,7 +13,7 @@ export class DashboardController {
 
       const [
         totalLeads, newThisWeek, newThisMonth,
-        hotLeads, warmLeads, coldLeads, staleLeads, convertedLeads,
+        hotLeads, warmLeads, coldLeads, failedLeads, convertedLeads,
         totalOutreach, outreachThisWeek,
         activeSequences,
         totalQueries, pendingQueries, answeredQueries, queriesThisWeek,
@@ -24,7 +24,7 @@ export class DashboardController {
         Lead.count({ where: { tenant_id: tenantId, lead_type: 'HOT' } }),
         Lead.count({ where: { tenant_id: tenantId, lead_type: 'WARM' } }),
         Lead.count({ where: { tenant_id: tenantId, lead_type: 'COLD' } }),
-        Lead.count({ where: { tenant_id: tenantId, lead_type: 'STALE' } }),
+        Lead.count({ where: { tenant_id: tenantId, lead_type: 'FAILED' } }),
         Lead.count({ where: { tenant_id: tenantId, lead_type: 'CONVERTED' } }),
         OutreachRecord.count({ where: { tenant_id: tenantId } }),
         OutreachRecord.count({ where: { tenant_id: tenantId, created_at: { [Op.gte]: sevenDaysAgo } } }),
@@ -41,7 +41,7 @@ export class DashboardController {
         total_leads: totalLeads,
         new_this_week: newThisWeek,
         new_this_month: newThisMonth,
-        lead_types: { hot: hotLeads, warm: warmLeads, cold: coldLeads, stale: staleLeads, converted: convertedLeads },
+        lead_types: { hot: hotLeads, warm: warmLeads, cold: coldLeads, failed: failedLeads, converted: convertedLeads },
         conversion_rate: conversionRate,
         total_outreach: totalOutreach,
         outreach_this_week: outreachThisWeek,

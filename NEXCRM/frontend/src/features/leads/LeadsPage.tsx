@@ -7,19 +7,36 @@ import {
   Plus,
   Search,
   Filter,
-  Upload,
-  Download,
   ChevronLeft,
   ChevronRight,
+  UserCheck,
+  PhoneCall,
 } from "lucide-react";
+import LogCallModal from "../../components/LogCallModal";
+import RepPickerDropdown from "../../components/RepPickerDropdown";
 
 export default function LeadsPage() {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const [filters, setFilters] = useState<any>({});
   const [showFilters, setShowFilters] = useState(false);
+  const [reassignLead, setReassignLead] = useState<any>(null);
+  const [reassignAnchor, setReassignAnchor] = useState<HTMLElement | null>(null);
+  const [logCallLead, setLogCallLead] = useState<any>(null);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+
+  const assignMutation = useMutation({
+    mutationFn: ({ leadId, repId }: { leadId: string; repId: string }) =>
+      api.patch(`/leads/${leadId}/assign`, { rep_id: repId }).then((r) => r.data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["leads"] });
+      toast.success("Lead reassigned.");
+      setReassignLead(null);
+      setReassignAnchor(null);
+    },
+    onError: () => toast.error("Failed to reassign lead."),
+  });
 
   const { data, isLoading } = useQuery({
     queryKey: ["leads", page, search, filters],
@@ -34,7 +51,7 @@ export default function LeadsPage() {
       HOT: "badge-hot",
       WARM: "badge-warm",
       COLD: "badge-cold",
-      STALE: "badge-stale",
+      FAILED: "badge-stale",
       CONVERTED: "badge-converted",
       LOST: "bg-red-50 text-red-700 px-2.5 py-0.5 rounded-full text-xs font-medium",
     };
@@ -52,7 +69,7 @@ export default function LeadsPage() {
       CONVERTED: "bg-green-50 text-green-700",
       LOST: "bg-red-50 text-red-700",
       OPTED_OUT: "bg-gray-50 text-gray-700",
-      STALE: "bg-gray-50 text-gray-600",
+      FAILED: "bg-red-50 text-red-700",
     };
     return (
       <span
@@ -117,7 +134,7 @@ export default function LeadsPage() {
               <option value="HOT">Hot</option>
               <option value="WARM">Warm</option>
               <option value="COLD">Cold</option>
-              <option value="STALE">Stale</option>
+              <option value="FAILED">Failed</option>
               <option value="CONVERTED">Converted</option>
             </select>
             <select
@@ -134,7 +151,7 @@ export default function LeadsPage() {
               <option value="ENGAGED">Engaged</option>
               <option value="CONVERTED">Converted</option>
               <option value="LOST">Lost</option>
-              <option value="STALE">Stale</option>
+              <option value="FAILED">Failed</option>
             </select>
             <select
               value={filters.source || ""}
@@ -191,13 +208,16 @@ export default function LeadsPage() {
                 <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">
                   Assigned Rep
                 </th>
+                <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase whitespace-nowrap">
+                  Actions
+                </th>
               </tr>
             </thead>
             <tbody>
               {isLoading
                 ? [...Array(10)].map((_, i) => (
                     <tr key={i}>
-                      <td colSpan={7} className="py-3 px-4">
+                      <td colSpan={8} className="py-3 px-4">
                         <div className="h-4 bg-gray-200 rounded animate-pulse"></div>
                       </td>
                     </tr>
@@ -248,6 +268,28 @@ export default function LeadsPage() {
                           ? `${lead.assignedRep.first_name} ${lead.assignedRep.last_name}`
                           : "—"}
                       </td>
+                      <td className="py-3 px-4 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            onClick={() => setLogCallLead(lead)}
+                            className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-green-700 bg-green-50 border border-green-200 rounded-lg hover:bg-green-100 transition-colors"
+                          >
+                            <PhoneCall className="w-3.5 h-3.5" />
+                            Log Call
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setReassignLead(lead);
+                              setReassignAnchor(e.currentTarget as HTMLElement);
+                            }}
+                            className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-brand-600 bg-brand-50 border border-brand-200 rounded-lg hover:bg-brand-100 transition-colors"
+                          >
+                            <UserCheck className="w-3.5 h-3.5" />
+                            Reassign
+                          </button>
+                        </div>
+                      </td>
                     </tr>
                   ))}
             </tbody>
@@ -285,6 +327,25 @@ export default function LeadsPage() {
           </div>
         )}
       </div>
+
+      {/* Log Call modal */}
+      {logCallLead && (
+        <LogCallModal
+          isOpen={!!logCallLead}
+          onClose={() => setLogCallLead(null)}
+          lead={logCallLead}
+        />
+      )}
+
+      {/* Reassign picker dropdown (fixed-position, escapes table overflow) */}
+      <RepPickerDropdown
+        isOpen={!!reassignLead && !!reassignAnchor}
+        anchorEl={reassignAnchor}
+        onClose={() => { setReassignLead(null); setReassignAnchor(null); }}
+        onSelect={(rep) => {
+          if (reassignLead) assignMutation.mutate({ leadId: reassignLead.id, repId: rep.id });
+        }}
+      />
     </div>
   );
 }

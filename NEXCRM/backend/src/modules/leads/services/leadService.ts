@@ -1,7 +1,7 @@
 import { Op } from 'sequelize';
 import fs from 'fs';
 import csvParser from 'csv-parser';
-import { Lead, User, ApplicationType, EngagementEvent, OutreachRecord, SequenceEnrollment, Tenant } from '../../../database/models';
+import { Lead, User, ApplicationType, EngagementEvent, OutreachRecord, SequenceEnrollment, Tenant, CallRecord, Task, WhatsAppMessage, Template } from '../../../database/models';
 import { AppError } from '../../../middleware/errorHandler';
 import sequelize from '../../../config/database';
 import { NotificationService } from '../../notifications/services/notificationService';
@@ -167,12 +167,12 @@ export class LeadService {
 
     const validTransitions: Record<string, string[]> = {
       NEW: ['ACTIVE', 'OPTED_OUT'],
-      ACTIVE: ['ENGAGED', 'STALE', 'OPTED_OUT', 'LOST', 'CONVERTED'],
-      ENGAGED: ['MEETING_SCHEDULED', 'ACTIVE', 'STALE', 'OPTED_OUT', 'LOST', 'CONVERTED'],
+      ACTIVE: ['ENGAGED', 'OPTED_OUT', 'LOST', 'CONVERTED'],
+      ENGAGED: ['MEETING_SCHEDULED', 'ACTIVE', 'OPTED_OUT', 'LOST', 'CONVERTED'],
       MEETING_SCHEDULED: ['PROPOSAL_SENT', 'NEGOTIATION', 'LOST', 'OPTED_OUT', 'CONVERTED'],
       PROPOSAL_SENT: ['NEGOTIATION', 'LOST', 'OPTED_OUT', 'CONVERTED'],
       NEGOTIATION: ['CONVERTED', 'LOST', 'OPTED_OUT'],
-      STALE: ['ACTIVE', 'OPTED_OUT', 'LOST'],
+      FAILED: ['ACTIVE', 'OPTED_OUT', 'LOST'],
       LOST: ['ACTIVE'],
     };
 
@@ -182,9 +182,9 @@ export class LeadService {
     }
 
     // Manager-only override checks
-    if (['STALE', 'LOST'].includes(currentStatus) && newStatus === 'ACTIVE') {
+    if (['FAILED', 'LOST'].includes(currentStatus) && newStatus === 'ACTIVE') {
       if (!['tenant_admin', 'sales_manager', 'super_admin'].includes(role)) {
-        throw new AppError('Only managers can reactivate stale/lost leads.', 403);
+        throw new AppError('Only managers can reactivate failed/lost leads.', 403);
       }
     }
 
@@ -294,23 +294,60 @@ export class LeadService {
   }
 
   async getLeadTimeline(tenantId: string, leadId: string, role: string = ''): Promise<any> {
-    const eventWhere: any = { lead_id: leadId };
-    const outreachWhere: any = { lead_id: leadId };
-    if (role !== 'super_admin') {
-      eventWhere.tenant_id = tenantId;
-      outreachWhere.tenant_id = tenantId;
-    }
-    const events = await EngagementEvent.findAll({
-      where: eventWhere,
-      order: [['created_at', 'DESC']],
-      limit: 100,
+    const where: any = { lead_id: leadId };
+    if (role !== 'super_admin') where.tenant_id = tenantId;
+
+    const [events, outreach, calls, tasks, whatsapp] = await Promise.all([
+      EngagementEvent.findAll({ where, order: [['created_at', 'DESC']], limit: 100 }),
+      OutreachRecord.findAll({
+        where,
+        include: [{ model: Template, as: 'template', attributes: ['id', 'name'] }],
+        order: [['created_at', 'DESC']], limit: 50,
+      }),
+      CallRecord.findAll({
+        where,
+        include: [{ model: User, as: 'rep', attributes: ['id', 'first_name', 'last_name'] }],
+        order: [['created_at', 'DESC']], limit: 50,
+      }),
+      Task.findAll({
+        where,
+        include: [{ model: User, as: 'assignee', attributes: ['id', 'first_name', 'last_name'] }],
+        order: [['created_at', 'DESC']], limit: 50,
+      }),
+      WhatsAppMessage.findAll({ where, order: [['created_at', 'DESC']], limit: 30 }),
+    ]);
+
+    const toItem = (type: string, row: any) => ({
+      type: type === 'event' && (row as any).event_type === 'note' ? 'note' : type,
+      timestamp: (row as any).created_at,
+      data: (row as any).toJSON(),
     });
-    const outreach = await OutreachRecord.findAll({
-      where: outreachWhere,
-      order: [['created_at', 'DESC']],
-      limit: 50,
+
+    const timeline = [
+      ...events.map(e => toItem('event', e)),
+      ...outreach.map(o => toItem('email', o)),
+      ...calls.map(c => toItem('call', c)),
+      ...tasks.map(t => toItem('task', t)),
+      ...whatsapp.map(w => toItem('whatsapp', w)),
+    ].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+    return { timeline, total: timeline.length };
+  }
+
+  async addNote(tenantId: string, leadId: string, userId: string, text: string): Promise<any> {
+    const lead = await Lead.findOne({ where: { id: leadId, tenant_id: tenantId } });
+    if (!lead) throw new AppError('Lead not found.', 404);
+
+    const note = await EngagementEvent.create({
+      tenant_id: tenantId,
+      lead_id: leadId,
+      event_type: 'note',
+      channel: 'manual',
+      metadata: { text, author_id: userId },
+      score_delta: 0,
     });
-    return { events, outreach };
+
+    return note;
   }
 
   async getLeadStats(tenantId: string, userId: string, role: string): Promise<any> {

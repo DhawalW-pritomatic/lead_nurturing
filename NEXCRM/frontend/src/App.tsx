@@ -15,10 +15,13 @@ import SettingsPage from "./features/settings/SettingsPage";
 import GuidelinesPage from "./features/settings/GuidelinesPage";
 import OutreachPage from "./features/outreach/OutreachPage";
 import SchedulerPage from "./features/scheduler/SchedulerPage";
+import NurturingPage from "./features/nurturing/NurturingPage";
+import TasksPage from "./features/tasks/TasksPage";
 import BulkImportPage from "./features/bulk-import/BulkImportPage";
 import NotificationsPage from "./features/notifications/NotificationsPage";
 import AdminPage from "./features/admin/AdminPage";
 import ProfilePage from "./features/profile/ProfilePage";
+import CalendarPage from "./features/calendar/CalendarPage";
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
@@ -55,6 +58,9 @@ export default function App() {
         <Route path="routing" element={<RoutingPage />} />
         <Route path="assets" element={<AssetsPage />} />
         <Route path="outreach" element={<OutreachPage />} />
+        <Route path="nurturing" element={<NurturingPage />} />
+        <Route path="tasks" element={<TasksPage />} />
+        <Route path="calendar" element={<CalendarPage />} />
         <Route path="scheduler" element={<SchedulerPage />} />
         <Route path="bulk-import" element={<BulkImportPage />} />
         <Route path="notifications" element={<NotificationsPage />} />

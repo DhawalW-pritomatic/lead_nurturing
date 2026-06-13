@@ -30,6 +30,7 @@ router.delete('/:id', authorize('tenant_admin', 'sales_manager', 'super_admin'),
 router.patch('/:id/status', controller.updateStatus.bind(controller));
 router.patch('/:id/assign', authorize('tenant_admin', 'sales_manager', 'super_admin'), controller.assignRep.bind(controller));
 router.get('/:id/timeline', controller.getTimeline.bind(controller));
+router.post('/:id/notes', controller.addNote.bind(controller));
 router.post('/import', authorize('tenant_admin', 'sales_manager', 'super_admin'), upload.single('file'), controller.bulkImport.bind(controller));
 
 export default router;
