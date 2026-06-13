@@ -23,6 +23,7 @@ import CallbackSchedule from './CallbackSchedule';
 import Task from './Task';
 import WhatsAppMessage from './WhatsAppMessage';
 import Meeting from './Meeting';
+import RoutingLog from './RoutingLog';
 
 // Tenant associations
 Tenant.hasMany(User, { foreignKey: 'tenant_id', as: 'users' });
@@ -123,6 +124,12 @@ Tenant.hasMany(LeadQuery, { foreignKey: 'tenant_id', as: 'leadQueries' });
 
 // Routing
 RoutingRule.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
+RoutingRule.hasMany(RoutingLog, { foreignKey: 'rule_id', as: 'logs' });
+
+// RoutingLog
+RoutingLog.belongsTo(RoutingRule, { foreignKey: 'rule_id', as: 'rule' });
+RoutingLog.belongsTo(Lead, { foreignKey: 'lead_id', as: 'lead' });
+RoutingLog.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
 
 // AuditLog
 AuditLog.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
@@ -184,4 +191,5 @@ export {
   Task,
   WhatsAppMessage,
   Meeting,
+  RoutingLog,
 };

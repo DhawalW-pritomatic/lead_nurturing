@@ -5,8 +5,10 @@ import { Lead, User, ApplicationType, EngagementEvent, OutreachRecord, SequenceE
 import { AppError } from '../../../middleware/errorHandler';
 import sequelize from '../../../config/database';
 import { NotificationService } from '../../notifications/services/notificationService';
+import { RoutingEngineService } from '../../routing/services/routingEngineService';
 
 const notificationService = new NotificationService();
+const routingEngine = new RoutingEngineService();
 
 export class LeadService {
   async createLead(tenantId: string, enrolledBy: string, data: any): Promise<any> {
@@ -40,6 +42,9 @@ export class LeadService {
 
     // Notification
     await notificationService.notifyLeadAdded(tenantId, `${data.first_name} ${data.last_name}`, data.source || 'Manual Entry', enrolledBy);
+
+    // Run routing engine async (do not block lead creation)
+    routingEngine.routeLead(tenantId, (lead as any).id, 'lead_created').catch(() => {/* silent */});
 
     return lead;
   }
