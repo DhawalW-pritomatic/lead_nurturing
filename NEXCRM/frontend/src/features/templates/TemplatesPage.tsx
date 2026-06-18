@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "../../services/api";
 import toast from "react-hot-toast";
-import { Plus, Edit2, Trash2, Eye, Image, Paperclip } from "lucide-react";
+import { Plus, Edit2, Trash2, Image, Paperclip } from "lucide-react";
 
 export default function TemplatesPage() {
   const queryClient = useQueryClient();
@@ -25,6 +25,11 @@ export default function TemplatesPage() {
   const { data: assets } = useQuery({
     queryKey: ["template-assets"],
     queryFn: () => api.get("/assets").then((r) => r.data),
+  });
+
+  const { data: s3Assets = [] } = useQuery<any[]>({
+    queryKey: ["s3-assets"],
+    queryFn: () => api.get("/uploads").then((r) => r.data),
   });
 
   const createMutation = useMutation({
@@ -87,13 +92,10 @@ export default function TemplatesPage() {
     const baseUrl = import.meta.env.VITE_API_URL || "http://localhost:5000";
     const assetUrl = `${baseUrl}/uploads/assets/${asset.filename}`;
     const isImage = asset.mime_type?.startsWith("image/");
-    let snippet = "";
-    if (isImage) {
-      snippet = `<img src="${assetUrl}" alt="${asset.original_name}" style="max-width:100%;height:auto;" />`;
-    } else {
-      snippet = `<a href="${assetUrl}" target="_blank">${asset.original_name}</a>`;
-    }
-    setForm({ ...form, body: form.body + "\n" + snippet });
+    const snippet = isImage
+      ? `<img src="${assetUrl}" alt="${asset.original_name}" style="max-width:100%;height:auto;" />`
+      : `<a href="${assetUrl}" target="_blank">${asset.original_name}</a>`;
+    setForm((prev) => ({ ...prev, body: prev.body + "\n" + snippet }));
     setShowAssetPicker(false);
     toast.success(`Asset "${asset.original_name}" inserted.`);
   };
@@ -116,6 +118,8 @@ export default function TemplatesPage() {
     reengagement: "bg-orange-100 text-orange-700",
     general: "bg-gray-100 text-gray-700",
   };
+
+  const localAssets = Array.isArray(assets) ? assets : assets?.assets || [];
 
   return (
     <div className="space-y-6">
@@ -169,6 +173,7 @@ export default function TemplatesPage() {
               <option value="email">Email</option>
             </select>
           </div>
+
           <input
             placeholder="Subject line (supports {{variables}})"
             value={form.subject}
@@ -182,6 +187,8 @@ export default function TemplatesPage() {
             className="input-field"
             rows={8}
           />
+
+          {/* Asset picker */}
           <div className="flex items-center gap-2">
             <button
               type="button"
@@ -194,20 +201,17 @@ export default function TemplatesPage() {
               Insert images or file links from your asset library
             </span>
           </div>
+
           {showAssetPicker && (
-            <div className="border border-gray-200 rounded-lg p-4 bg-gray-50 max-h-60 overflow-y-auto">
-              <h4 className="text-sm font-medium text-gray-700 mb-2">
-                Select an Asset
-              </h4>
-              {!assets || assets.length === 0 ? (
-                <p className="text-sm text-gray-500">
-                  No assets available. Upload assets in the Assets section
-                  first.
-                </p>
-              ) : (
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-                  {(Array.isArray(assets) ? assets : assets.assets || []).map(
-                    (asset: any) => (
+            <div className="border border-gray-200 rounded-lg p-4 bg-gray-50 max-h-72 overflow-y-auto space-y-4">
+              {/* Local Assets */}
+              {localAssets.length > 0 && (
+                <div>
+                  <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                    Local Assets
+                  </h4>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                    {localAssets.map((asset: any) => (
                       <button
                         key={asset.id}
                         onClick={() => insertAsset(asset)}
@@ -222,12 +226,63 @@ export default function TemplatesPage() {
                           {asset.original_name}
                         </span>
                       </button>
-                    ),
-                  )}
+                    ))}
+                  </div>
                 </div>
+              )}
+
+              {/* S3 Library */}
+              <div>
+                <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                  S3 Library
+                </h4>
+                {s3Assets.length === 0 ? (
+                  <p className="text-sm text-gray-400">
+                    No S3 files uploaded yet.
+                  </p>
+                ) : (
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                    {s3Assets.map((asset: any) => {
+                      const serveUrl = `${import.meta.env.VITE_API_URL}/api/uploads/serve/${asset.id}`;
+                      const link = asset.mime_type?.startsWith("image/")
+                        ? `<img src="${serveUrl}" alt="${asset.original_name}" style="max-width:100%;height:auto;" />`
+                        : `<a href="${serveUrl}" target="_blank">${asset.original_name}</a>`;
+                      return (
+                        <button
+                          key={asset.id}
+                          onClick={() => {
+                            setForm((prev) => ({
+                              ...prev,
+                              body: prev.body + "\n" + link,
+                            }));
+                            setShowAssetPicker(false);
+                            toast.success(`"${asset.original_name}" inserted.`);
+                          }}
+                          className="flex items-center gap-2 p-2 bg-white border border-gray-200 rounded hover:border-brand-400 hover:bg-brand-50 transition text-left"
+                        >
+                          {asset.mime_type?.startsWith("image/") ? (
+                            <Image className="w-4 h-4 text-purple-500 flex-shrink-0" />
+                          ) : (
+                            <Paperclip className="w-4 h-4 text-orange-500 flex-shrink-0" />
+                          )}
+                          <span className="text-xs text-gray-700 truncate">
+                            {asset.original_name}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {localAssets.length === 0 && s3Assets.length === 0 && (
+                <p className="text-sm text-gray-500">
+                  No assets available. Upload assets in the Assets section first.
+                </p>
               )}
             </div>
           )}
+
           <div className="flex gap-3">
             <button onClick={handleSave} className="btn-primary">
               {editingTemplate ? "Update" : "Create"}

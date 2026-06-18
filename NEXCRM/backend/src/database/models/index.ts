@@ -24,6 +24,8 @@ import Task from './Task';
 import WhatsAppMessage from './WhatsAppMessage';
 import Meeting from './Meeting';
 import RoutingLog from './RoutingLog';
+import S3Asset from './S3Asset';
+import AssetDownloadToken from './AssetDownloadToken';
 
 // Tenant associations
 Tenant.hasMany(User, { foreignKey: 'tenant_id', as: 'users' });
@@ -165,6 +167,10 @@ Meeting.belongsTo(User, { foreignKey: 'assigned_to', as: 'assignedRep' });
 Meeting.belongsTo(User, { foreignKey: 'created_by', as: 'creator' });
 Lead.hasMany(Meeting, { foreignKey: 'lead_id', as: 'meetings' });
 
+// S3 Asset Library
+AssetDownloadToken.belongsTo(S3Asset, { foreignKey: 's3_asset_id', as: 'asset' });
+S3Asset.hasMany(AssetDownloadToken, { foreignKey: 's3_asset_id', as: 'downloadTokens' });
+
 export {
   Tenant,
   User,
@@ -192,4 +198,6 @@ export {
   WhatsAppMessage,
   Meeting,
   RoutingLog,
+  S3Asset,
+  AssetDownloadToken,
 };

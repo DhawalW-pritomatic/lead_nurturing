@@ -13,6 +13,11 @@ import {
   MessageSquare,
   X,
   CornerUpRight,
+  Search,
+  CheckSquare,
+  Square,
+  Users,
+  ChevronDown,
 } from "lucide-react";
 
 export default function OutreachPage() {
@@ -20,11 +25,11 @@ export default function OutreachPage() {
   const token = useAuthStore((s) => s.token);
 
   // Real-time: refresh counts the moment a tracking pixel fires on the backend.
-  // Connect directly to localhost:5000 to bypass the Vite proxy, which buffers
+  // Connect directly to localhost:5003 to bypass the Vite proxy, which buffers
   // chunked streaming responses and breaks SSE delivery.
   useEffect(() => {
     if (!token) return;
-    const backendUrl = "http://localhost:5000";
+    const backendUrl = "http://localhost:5003";
     const es = new EventSource(
       `${backendUrl}/api/outreach/events?token=${encodeURIComponent(token)}`
     );
@@ -36,14 +41,29 @@ export default function OutreachPage() {
     return () => es.close();
   }, [token, queryClient]);
 
-  const [selectedLead, setSelectedLead] = useState("");
+  const [selectedLeads, setSelectedLeads] = useState<string[]>([]);
+  const [leadSearch, setLeadSearch] = useState("");
+  const [showLeadDropdown, setShowLeadDropdown] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState("");
   const [subject, setSubject] = useState("");
+  const [selectedAssetIds, setSelectedAssetIds] = useState<string[]>([]);
+  const [bulkProgress, setBulkProgress] = useState<{ sent: number; total: number } | null>(null);
   const [queryStatusFilter, setQueryStatusFilter] = useState<
     "all" | "pending" | "answered"
   >("all");
   const [answeringQuery, setAnsweringQuery] = useState<any>(null);
   const [answerText, setAnswerText] = useState("");
+
+  // Close lead dropdown when clicking outside
+  useEffect(() => {
+    if (!showLeadDropdown) return;
+    const handler = (e: MouseEvent) => {
+      const target = e.target as Element;
+      if (!target.closest("[data-lead-picker]")) setShowLeadDropdown(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [showLeadDropdown]);
 
   const { data: outreach = [], isLoading } = useQuery({
     queryKey: ["outreach"],
@@ -107,6 +127,11 @@ export default function OutreachPage() {
     queryFn: () => api.get("/templates").then((r) => r.data),
   });
 
+  const { data: s3Assets = [] } = useQuery<any[]>({
+    queryKey: ["s3-assets"],
+    queryFn: () => api.get("/uploads").then((r) => r.data),
+  });
+
   const sendMutation = useMutation({
     mutationFn: (data: any) =>
       api.post("/outreach/send", data).then((r) => r.data),
@@ -114,7 +139,7 @@ export default function OutreachPage() {
       queryClient.invalidateQueries({ queryKey: ["outreach"] });
       queryClient.invalidateQueries({ queryKey: ["outreach-stats"] });
       toast.success("Email sent successfully!");
-      setSelectedLead("");
+      setSelectedLeads([]);
       setSelectedTemplate("");
       setSubject("");
     },
@@ -144,16 +169,41 @@ export default function OutreachPage() {
       toast.error(e?.response?.data?.error || "Failed to send reply"),
   });
 
-  const handleSend = () => {
-    if (!selectedLead || !selectedTemplate) {
-      toast.error("Select lead and template");
+  const handleSend = async () => {
+    if (selectedLeads.length === 0 || !selectedTemplate) {
+      toast.error("Select at least one lead and a template");
       return;
     }
-    sendMutation.mutate({
-      lead_id: selectedLead,
-      template_id: selectedTemplate,
-      subject: subject || undefined,
-    });
+    setBulkProgress({ sent: 0, total: selectedLeads.length });
+    let sent = 0;
+    let failed = 0;
+    for (const leadId of selectedLeads) {
+      try {
+        await api.post("/outreach/send", {
+          lead_id: leadId,
+          template_id: selectedTemplate,
+          subject: subject || undefined,
+          asset_ids: selectedAssetIds.length > 0 ? selectedAssetIds : undefined,
+        });
+        sent++;
+        setBulkProgress({ sent, total: selectedLeads.length });
+      } catch {
+        failed++;
+      }
+    }
+    queryClient.invalidateQueries({ queryKey: ["outreach"] });
+    queryClient.invalidateQueries({ queryKey: ["outreach-stats"] });
+    setBulkProgress(null);
+    if (failed === 0) {
+      toast.success(`${sent} email${sent !== 1 ? "s" : ""} sent successfully!`);
+    } else {
+      toast.error(`${sent} sent, ${failed} failed.`);
+    }
+    setSelectedLeads([]);
+    setSelectedTemplate("");
+    setSubject("");
+    setSelectedAssetIds([]);
+    setLeadSearch("");
   };
 
   const handleAnswer = () => {
@@ -220,23 +270,118 @@ export default function OutreachPage() {
       <div className="card">
         <h3 className="font-semibold text-gray-900 mb-4">Send Email</h3>
         <div className="grid grid-cols-3 gap-4">
-          <div>
+
+          {/* Searchable multi-select lead picker */}
+          <div className="relative" data-lead-picker>
             <label className="text-sm font-medium text-gray-700 mb-1 block">
-              Lead
+              Lead(s)
+              {selectedLeads.length > 0 && (
+                <span className="ml-2 inline-flex items-center gap-1 bg-brand-100 text-brand-700 text-xs px-2 py-0.5 rounded-full font-semibold">
+                  <Users className="w-3 h-3" /> {selectedLeads.length} selected
+                </span>
+              )}
             </label>
-            <select
-              value={selectedLead}
-              onChange={(e) => setSelectedLead(e.target.value)}
-              className="input-field"
+            {/* Trigger button */}
+            <button
+              type="button"
+              onClick={() => setShowLeadDropdown((v) => !v)}
+              className="input-field flex items-center justify-between w-full text-left"
             >
-              <option value="">Select lead...</option>
-              {(Array.isArray(leads) ? leads : []).map((l: any) => (
-                <option key={l.id} value={l.id}>
-                  {l.first_name} {l.last_name} ({l.email})
-                </option>
-              ))}
-            </select>
+              <span className="text-gray-500 truncate">
+                {selectedLeads.length === 0
+                  ? "Search and select leads…"
+                  : `${selectedLeads.length} lead${selectedLeads.length !== 1 ? "s" : ""} selected`}
+              </span>
+              <ChevronDown className="w-4 h-4 text-gray-400 shrink-0" />
+            </button>
+
+            {/* Dropdown */}
+            {showLeadDropdown && (
+              <div className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg">
+                {/* Search input */}
+                <div className="p-2 border-b border-gray-100">
+                  <div className="flex items-center gap-2 px-2 py-1 bg-gray-50 rounded">
+                    <Search className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                    <input
+                      autoFocus
+                      value={leadSearch}
+                      onChange={(e) => setLeadSearch(e.target.value)}
+                      placeholder="Type to search…"
+                      className="flex-1 bg-transparent text-sm outline-none"
+                    />
+                  </div>
+                </div>
+
+                {/* Select All / Clear */}
+                {(() => {
+                  const filtered = (Array.isArray(leads) ? leads : []).filter((l: any) => {
+                    const q = leadSearch.toLowerCase();
+                    return !q || `${l.first_name} ${l.last_name} ${l.email}`.toLowerCase().includes(q);
+                  });
+                  const allSelected = filtered.length > 0 && filtered.every((l: any) => selectedLeads.includes(l.id));
+                  return (
+                    <>
+                      <div className="flex items-center justify-between px-3 py-1.5 border-b border-gray-100 bg-gray-50">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (allSelected) {
+                              setSelectedLeads((prev) => prev.filter((id) => !filtered.map((l: any) => l.id).includes(id)));
+                            } else {
+                              const newIds = filtered.map((l: any) => l.id);
+                              setSelectedLeads((prev) => Array.from(new Set([...prev, ...newIds])));
+                            }
+                          }}
+                          className="text-xs text-brand-600 hover:underline font-medium flex items-center gap-1"
+                        >
+                          {allSelected ? <CheckSquare className="w-3 h-3" /> : <Square className="w-3 h-3" />}
+                          {allSelected ? "Deselect All" : `Select All (${filtered.length})`}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setShowLeadDropdown(false)}
+                          className="text-xs text-gray-400 hover:text-gray-600"
+                        >
+                          Done
+                        </button>
+                      </div>
+
+                      {/* Lead list */}
+                      <div className="max-h-52 overflow-y-auto">
+                        {filtered.length === 0 && (
+                          <p className="text-sm text-gray-400 text-center py-4">No leads found.</p>
+                        )}
+                        {filtered.map((l: any) => {
+                          const checked = selectedLeads.includes(l.id);
+                          return (
+                            <button
+                              key={l.id}
+                              type="button"
+                              onClick={() => setSelectedLeads((prev) =>
+                                checked ? prev.filter((id) => id !== l.id) : [...prev, l.id]
+                              )}
+                              className={`w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-gray-50 transition-colors ${checked ? "bg-brand-50" : ""}`}
+                            >
+                              {checked
+                                ? <CheckSquare className="w-4 h-4 text-brand-600 shrink-0" />
+                                : <Square className="w-4 h-4 text-gray-300 shrink-0" />}
+                              <div className="min-w-0">
+                                <p className="text-sm font-medium text-gray-900 truncate">
+                                  {l.first_name} {l.last_name}
+                                </p>
+                                <p className="text-xs text-gray-400 truncate">{l.email}</p>
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </>
+                  );
+                })()}
+              </div>
+            )}
           </div>
+
           <div>
             <label className="text-sm font-medium text-gray-700 mb-1 block">
               Template
@@ -266,12 +411,34 @@ export default function OutreachPage() {
             />
           </div>
         </div>
+
+        {/* Bulk progress bar */}
+        {bulkProgress && (
+          <div className="mt-3 space-y-1">
+            <div className="flex justify-between text-xs text-gray-500">
+              <span>Sending… {bulkProgress.sent} / {bulkProgress.total}</span>
+              <span>{Math.round((bulkProgress.sent / bulkProgress.total) * 100)}%</span>
+            </div>
+            <div className="w-full bg-gray-200 rounded-full h-1.5">
+              <div
+                className="bg-brand-600 h-1.5 rounded-full transition-all"
+                style={{ width: `${(bulkProgress.sent / bulkProgress.total) * 100}%` }}
+              />
+            </div>
+          </div>
+        )}
+
         <button
           onClick={handleSend}
-          disabled={sendMutation.isPending}
-          className="btn-primary mt-4 flex items-center gap-2"
+          disabled={!!bulkProgress || selectedLeads.length === 0 || !selectedTemplate}
+          className="btn-primary mt-4 flex items-center gap-2 disabled:opacity-50"
         >
-          <Send className="w-4 h-4" /> Send Email
+          <Send className="w-4 h-4" />
+          {bulkProgress
+            ? `Sending ${bulkProgress.sent}/${bulkProgress.total}…`
+            : selectedLeads.length > 1
+            ? `Send to ${selectedLeads.length} Leads`
+            : "Send Email"}
         </button>
       </div>
 

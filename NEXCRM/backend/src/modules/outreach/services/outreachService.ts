@@ -5,6 +5,8 @@ import { Lead, Template, OutreachRecord, User, Tenant } from '../../../database/
 import { AppError } from '../../../middleware/errorHandler';
 import { v4 as uuidv4 } from 'uuid';
 import { NotificationService } from '../../notifications/services/notificationService';
+import S3Asset from '../.././../database/models/S3Asset';
+import { assetTrackingService } from '../../tracking/services/assetTrackingService';
 
 const notificationService = new NotificationService();
 
@@ -29,7 +31,8 @@ export class OutreachService {
     templateId: string,
     repId?: string,
     sequenceStep?: number,
-    sequenceContext?: { sequence_id?: string; sequence_enrollment_id?: string }
+    sequenceContext?: { sequence_id?: string; sequence_enrollment_id?: string },
+    assetIds?: string[]
   ): Promise<any> {
     const lead = await Lead.findOne({ where: { id: leadId, tenant_id: tenantId } });
     if (!lead) throw new AppError('Lead not found.', 404);
@@ -78,7 +81,7 @@ export class OutreachService {
     const unsubUrl = `${config.baseUrl}/track/unsubscribe/${leadId}?tenant=${tenantId}`;
     body += `<br/><p style="font-size:11px;color:#999;margin-top:20px;">If you no longer wish to receive these emails, <a href="${unsubUrl}">unsubscribe here</a>.</p>`;
 
-    // Create outreach record
+    // Create outreach record first so we can link tokens to it
     const record = await OutreachRecord.create({
       tenant_id: tenantId,
       lead_id: leadId,
@@ -93,6 +96,49 @@ export class OutreachService {
       rep_id: repId,
       tracking_id: trackingId,
     });
+
+    // If assets are attached, generate a tracking token per asset and append a download section
+    if (assetIds && assetIds.length > 0) {
+      const assets = await S3Asset.findAll({
+        where: { id: assetIds, tenant_id: tenantId, is_active: true },
+        attributes: ['id', 'original_name', 'mime_type', 'size_bytes'],
+      });
+
+      if (assets.length > 0) {
+        const downloadRows = await Promise.all(
+          assets.map(async (asset) => {
+            const downloadUrl = await assetTrackingService.generateToken({
+              tenantId,
+              s3AssetId: asset.id,
+              leadId,
+              outreachRecordId: record.id,
+            });
+            const sizeKb = Math.round((asset as any).size_bytes / 1024);
+            return `
+              <tr>
+                <td style="padding:8px 0;border-bottom:1px solid #eee;">
+                  <span style="font-size:14px;">📎 ${(asset as any).original_name}</span>
+                  <span style="font-size:12px;color:#999;margin-left:8px;">(${sizeKb} KB)</span>
+                </td>
+                <td style="padding:8px 0;border-bottom:1px solid #eee;text-align:right;">
+                  <a href="${downloadUrl}"
+                     style="background:#0066cc;color:#fff;padding:6px 14px;border-radius:4px;text-decoration:none;font-size:13px;">
+                    Download
+                  </a>
+                </td>
+              </tr>`;
+          })
+        );
+
+        body += `
+          <div style="margin-top:24px;padding:16px;background:#f9f9f9;border:1px solid #e0e0e0;border-radius:6px;font-family:sans-serif;">
+            <p style="margin:0 0 12px;font-weight:bold;font-size:14px;color:#333;">Attached Files</p>
+            <table style="width:100%;border-collapse:collapse;">
+              ${downloadRows.join('')}
+            </table>
+          </div>`;
+      }
+    }
 
     try {
       const fromName = (config.smtp.from.match(/^([^<]+)/) || [''])[0].trim().replace(/^["']|["']$/g, '');

@@ -1,6 +1,5 @@
 import { Router } from 'express';
 import multer from 'multer';
-import path from 'path';
 import { BulkImportController } from './controllers/bulkImportController';
 import { authenticate, tenantIsolation } from '../../middleware/auth';
 
@@ -8,7 +7,7 @@ const router = Router();
 const controller = new BulkImportController();
 
 const upload = multer({
-  dest: path.join(__dirname, '../../../uploads/csv'),
+  storage: multer.memoryStorage(),
   limits: { fileSize: 50 * 1024 * 1024 }, // 50MB for bulk imports
   fileFilter: (req, file, cb) => {
     if (file.mimetype === 'text/csv' || file.originalname.endsWith('.csv')) {
