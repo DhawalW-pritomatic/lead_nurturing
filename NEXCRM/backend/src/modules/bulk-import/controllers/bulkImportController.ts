@@ -11,7 +11,7 @@ export class BulkImportController {
         res.status(400).json({ error: 'CSV file is required.' });
         return;
       }
-      const result = await bulkImportService.importMultiTenantCSV(req.user!.id, req.file.path);
+      const result = await bulkImportService.importMultiTenantCSV(req.user!.id, req.file.buffer);
       res.json(result);
     } catch (error: any) {
       res.status(error.statusCode || 400).json({ error: error.message });
@@ -24,7 +24,7 @@ export class BulkImportController {
         res.status(400).json({ error: 'CSV file is required.' });
         return;
       }
-      const result = await bulkImportService.importForTenant(req.user!.tenant_id, req.user!.id, req.file.path);
+      const result = await bulkImportService.importForTenant(req.user!.tenant_id, req.user!.id, req.file.buffer);
       res.json(result);
     } catch (error: any) {
       res.status(error.statusCode || 400).json({ error: error.message });

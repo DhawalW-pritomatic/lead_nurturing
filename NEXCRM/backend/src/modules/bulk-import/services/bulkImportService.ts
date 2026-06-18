@@ -1,4 +1,4 @@
-import fs from 'fs';
+import { Readable } from 'stream';
 import csvParser from 'csv-parser';
 import { Op } from 'sequelize';
 import { Lead, Tenant } from '../../../database/models';
@@ -13,12 +13,12 @@ export class BulkImportService {
    * from CSV to determine which tenant each lead belongs to.
    * Only super_admin can use this endpoint.
    */
-  async importMultiTenantCSV(userId: string, filePath: string): Promise<any> {
+  async importMultiTenantCSV(userId: string, fileBuffer: Buffer): Promise<any> {
     const rows: any[] = [];
     const errors: any[] = [];
 
     return new Promise((resolve, reject) => {
-      fs.createReadStream(filePath)
+      Readable.from(fileBuffer.toString())
         .pipe(csvParser())
         .on('data', (row: any) => {
           rows.push(row);
@@ -79,9 +79,6 @@ export class BulkImportService {
               await notificationService.notifyBulkImportComplete(tenant.id, result.created, result.errors);
             }
 
-            // Cleanup uploaded file
-            fs.unlink(filePath, () => {});
-
             resolve({
               total_rows: rows.length,
               total_created: totalCreated,
@@ -91,12 +88,10 @@ export class BulkImportService {
               error_details: errors.slice(0, 20),
             });
           } catch (err) {
-            fs.unlink(filePath, () => {});
             reject(err);
           }
         })
         .on('error', (err: any) => {
-          fs.unlink(filePath, () => {});
           reject(new AppError('Failed to parse CSV file.', 400));
         });
     });
@@ -105,12 +100,12 @@ export class BulkImportService {
   /**
    * Single-tenant CSV import: all leads go to the given tenant.
    */
-  async importForTenant(tenantId: string, userId: string, filePath: string): Promise<any> {
+  async importForTenant(tenantId: string, userId: string, fileBuffer: Buffer): Promise<any> {
     const rows: any[] = [];
     const errors: any[] = [];
 
     return new Promise((resolve, reject) => {
-      fs.createReadStream(filePath)
+      Readable.from(fileBuffer.toString())
         .pipe(csvParser())
         .on('data', (row: any) => {
           rows.push(row);
@@ -122,9 +117,6 @@ export class BulkImportService {
             // Send notification
             await notificationService.notifyBulkImportComplete(tenantId, result.created, result.errors, userId);
 
-            // Cleanup uploaded file
-            fs.unlink(filePath, () => {});
-
             resolve({
               total_in_file: rows.length,
               valid: result.valid,
@@ -134,12 +126,10 @@ export class BulkImportService {
               error_details: errors.slice(0, 10),
             });
           } catch (err) {
-            fs.unlink(filePath, () => {});
             reject(err);
           }
         })
         .on('error', () => {
-          fs.unlink(filePath, () => {});
           reject(new AppError('Failed to parse CSV file.', 400));
         });
     });

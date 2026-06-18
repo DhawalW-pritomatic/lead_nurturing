@@ -15,6 +15,7 @@ import { simpleParser } from 'mailparser';
 import { Readable } from 'stream';
 import { Lead, LeadQuery } from '../../../database/models';
 import { config } from '../../../config';
+import { msOAuthService } from '../../../services/msOAuthService';
 
 export class GmailPollerService {
   private isRunning = false;
@@ -26,19 +27,24 @@ export class GmailPollerService {
   private readonly backfillMaxImport = parseInt(process.env.IMAP_BACKFILL_MAX_IMPORT || '2000', 10);
   private readonly backfillMaxSeenScan = parseInt(process.env.IMAP_BACKFILL_MAX_SEEN_SCAN || '10000', 10);
 
-  private get imapConfig() {
+  private async getImapConfig() {
+    const accessToken = await msOAuthService.getImapAccessToken();
     return {
-      host: process.env.IMAP_HOST || 'imap.gmail.com',
+      host: process.env.IMAP_HOST || 'outlook.office365.com',
       port: parseInt(process.env.IMAP_PORT || '993'),
       secure: true,
       auth: {
         user: process.env.IMAP_USER || config.smtp.user,
-        pass: process.env.IMAP_PASS || config.smtp.pass,
+        accessToken,
       },
-      logger: false,
+      logger: process.env.IMAP_DEBUG === 'true' ? (console as any) : false,
       socketTimeout: 90000,
       connectionTimeout: 30000,
-    } as const;
+      tls: {
+        servername: process.env.IMAP_HOST || 'outlook.office365.com',
+        rejectUnauthorized: true,
+      },
+    };
   }
 
   async poll(): Promise<{ inserted: number; skipped: number; errors: number }> {
@@ -60,7 +66,7 @@ export class GmailPollerService {
     }
     this.isRunning = true;
 
-    const client = new ImapFlow(this.imapConfig);
+    const client = new ImapFlow(await this.getImapConfig());
 
     // Absorb socket-level errors so they don't crash the process
     client.on('error', (err: Error) => {
@@ -270,6 +276,10 @@ export class GmailPollerService {
       await client.logout();
     } catch (err: any) {
       console.error('[GmailPoller] IMAP connection error:', err.message);
+      if (err.response)       console.error('[GmailPoller] Server response:', err.response);
+      if (err.responseCode)   console.error('[GmailPoller] Response code:', err.responseCode);
+      if (err.authenticationFailed) console.error('[GmailPoller] Authentication failed — check IMAP_USER / IMAP_PASS');
+      if (err.code)           console.error('[GmailPoller] Error code:', err.code);
       errors++;
     } finally {
       this.isRunning = false;

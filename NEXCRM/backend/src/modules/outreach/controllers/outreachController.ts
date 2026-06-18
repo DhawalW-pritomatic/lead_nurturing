@@ -10,8 +10,16 @@ const outreachService = new OutreachService();
 export class OutreachController {
   async sendEmail(req: AuthRequest, res: Response): Promise<void> {
     try {
-      const { lead_id, template_id } = req.body;
-      const result = await outreachService.sendEmail(req.user!.tenant_id, lead_id, template_id, req.user!.id);
+      const { lead_id, template_id, asset_ids } = req.body;
+      const result = await outreachService.sendEmail(
+        req.user!.tenant_id,
+        lead_id,
+        template_id,
+        req.user!.id,
+        undefined,
+        undefined,
+        asset_ids  // optional array of S3Asset IDs to attach
+      );
       res.json(result);
     } catch (error: any) {
       res.status(error.statusCode || 400).json({ error: error.message });

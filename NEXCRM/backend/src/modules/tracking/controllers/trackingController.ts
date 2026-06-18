@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { AuthRequest } from '../../../middleware/auth';
 import { TrackingService } from '../services/trackingService';
+import { assetTrackingService } from '../services/assetTrackingService';
 import { config } from '../../../config';
 
 const trackingService = new TrackingService();
@@ -89,6 +90,28 @@ export class TrackingController {
     try {
       const stats = await trackingService.getQueryStats(req.user!.tenant_id);
       res.json(stats);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  }
+
+  // Public — no auth. Lead clicks download link in email → resolve token → redirect to S3 presigned URL
+  async downloadAsset(req: Request, res: Response): Promise<void> {
+    try {
+      const presignedUrl = await assetTrackingService.resolveToken(req.params.token);
+      res.redirect(302, presignedUrl);
+    } catch (err: any) {
+      res.status(410).send(
+        '<html><body><h2>Download link unavailable.</h2><p>This file may have been removed or the link is invalid.</p></body></html>'
+      );
+    }
+  }
+
+  // Authenticated — rep views download stats for assets sent in a specific email
+  async getAssetDownloadStats(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      const tokens = await assetTrackingService.getTokensByOutreachRecord(req.params.outreachRecordId);
+      res.json(tokens);
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }

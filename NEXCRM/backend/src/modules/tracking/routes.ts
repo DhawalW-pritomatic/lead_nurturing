@@ -10,6 +10,10 @@ router.get('/open/:trackingId', controller.trackOpen.bind(controller));
 router.get('/click/:trackingId', controller.trackClick.bind(controller));
 router.get('/unsubscribe/:leadId', controller.unsubscribe.bind(controller));
 router.post('/inbound/webhook', controller.ingestInboundEmailWebhook.bind(controller));
+// Asset download: lead clicks link in email → resolves token → 302 to S3 presigned URL
+router.get('/asset/:token', controller.downloadAsset.bind(controller));
+// Authenticated: rep views per-asset download stats for a sent email
+router.get('/outreach/:outreachRecordId/assets', authenticate, tenantIsolation, controller.getAssetDownloadStats.bind(controller));
 
 // Query management endpoints
 router.post('/queries/inbound', authenticate, tenantIsolation, controller.createInboundQuery.bind(controller));

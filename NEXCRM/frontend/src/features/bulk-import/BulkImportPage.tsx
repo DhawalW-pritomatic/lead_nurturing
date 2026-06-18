@@ -7,18 +7,10 @@ import { Upload, FileText, CheckCircle, AlertCircle } from "lucide-react";
 export default function BulkImportPage() {
   const [file, setFile] = useState<File | null>(null);
   const [result, setResult] = useState<any>(null);
-  const [importType, setImportType] = useState<"tenant" | "multi-tenant">(
-    "tenant",
-  );
-
   const importMutation = useMutation({
     mutationFn: async (formData: FormData) => {
-      const endpoint =
-        importType === "multi-tenant"
-          ? "/bulk-import/multi-tenant"
-          : "/bulk-import/tenant";
       return api
-        .post(endpoint, formData, {
+        .post("/bulk-import/tenant", formData, {
           headers: { "Content-Type": "multipart/form-data" },
         })
         .then((r) => r.data);
@@ -49,25 +41,11 @@ export default function BulkImportPage() {
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Bulk CSV Import</h1>
         <p className="text-gray-500 mt-1">
-          Import leads from CSV files. Supports multi-tenant routing.
+          Import leads from a CSV file into your tenant.
         </p>
       </div>
 
       <div className="card space-y-4">
-        <div className="flex items-center gap-4">
-          <label className="text-sm font-medium text-gray-700">
-            Import Type:
-          </label>
-          <select
-            value={importType}
-            onChange={(e) => setImportType(e.target.value as any)}
-            className="input-field w-auto"
-          >
-            <option value="tenant">Single Tenant (my tenant)</option>
-            <option value="multi-tenant">Multi-Tenant (from CSV column)</option>
-          </select>
-        </div>
-
         <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-brand-400 transition">
           <Upload className="w-10 h-10 text-gray-400 mx-auto mb-3" />
           <input
@@ -95,16 +73,7 @@ export default function BulkImportPage() {
             <p>
               <strong>Optional:</strong> phone, company, city, source, consent
             </p>
-            {importType === "multi-tenant" && (
-              <p className="text-blue-600">
-                <strong>Multi-tenant:</strong> include a{" "}
-                <code className="bg-blue-100 px-1 rounded">
-                  tenant_subdomain
-                </code>{" "}
-                or <code className="bg-blue-100 px-1 rounded">tenant_name</code>{" "}
-                column to route leads to the correct tenant.
-              </p>
-            )}
+
           </div>
         </div>
 
